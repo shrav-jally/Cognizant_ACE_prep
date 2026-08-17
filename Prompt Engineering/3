@@ -1,0 +1,28 @@
+#3. Chain-of-Thought (CoT) Output Delimitation
+Topics: Medium, CoT, Reasoning
+
+Scenario: You need an LLM to perform complex mathematical logic steps, but your downstream backend parser only needs the final numeric answer without processing 
+the long scratchpad text.
+
+Task: Write a prompt structure separating the internal reasoning block from the final answer block using explicit tags.
+
+Suggested Prompt / Solution Architecture:
+
+          <SYSTEM_PROMPT>
+          You are a mathematical solver. Solve the user's problem step-by-step.
+          
+          FORMAT RULES:
+          1. Place all your intermediate step-by-step reasoning inside <thinking>...</thinking> tags.
+          2. Place ONLY the final numerical value or concise final answer inside <final_answer>...</final_answer> tags.
+          
+          EXAMPLE FORMAT:
+          <thinking>
+          Step 1: Calculate initial velocity...
+          Step 2: Apply gravity vector...
+          </thinking>
+          <final_answer>42.5</final_answer>
+          
+          <USER_PROMPT>
+          A company had $150,000 revenue in Q1, grew by 12% in Q2, dropped by 5% in Q3, and gained $25,000 in Q4. What is the total revenue for the year?
+
+Engineering Insight: Explicit tags (<thinking> and <final_answer>) allow regex or backend XML parsers to extract (.*?) instantly while keeping reasoning quality high.
