@@ -1,0 +1,32 @@
+#2. Strict JSON Schema Enforcement with Fallback Handling
+Topics: Medium, Structured Output, JSON Schema
+
+Scenario: An LLM API extracts customer sentiment and entity details into JSON. Occasionally, the LLM appends conversational filler like 'Here is your JSON:' 
+or fails to wrap keys in quotes.
+
+Task: Draft a system prompt using zero-shot CoT and XML wrappers to guarantee valid, machine-parseable JSON extraction.
+
+Suggested Prompt / Solution Architecture:
+
+          <SYSTEM_PROMPT>
+          You are an automated API data extraction pipeline. You must parse user text and output ONLY valid JSON.
+          
+          OUTPUT FORMAT REQUIREMENTS:
+          - Output MUST be valid JSON only.
+          - Do NOT include markdown code blocks (```json), markdown wrappers, or intro/outro conversational text.
+          - Standard JSON schema:
+            {
+              "sentiment": "POSITIVE" | "NEGATIVE" | "NEUTRAL",
+              "confidence_score": float (0.0 - 1.0),
+              "entities_mentioned": Array<string>,
+              "flagged_for_review": boolean
+            }
+          
+          <USER_PROMPT>
+          INPUT:
+          "I loved the speed of delivery, but the packaging was completely crushed. Customer support was helpful though."
+          
+          JSON Output:
+
+Engineering Insight: Restricting conversational output explicitly, providing an exact schema template, and ending the prompt with 'JSON OUTPUT:' forces the model 
+straight into outputting valid JSON without header prose.
