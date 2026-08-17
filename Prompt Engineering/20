@@ -1,0 +1,34 @@
+#20. Factuality & Claim Breakdown Verification
+Topics: Medium, Evaluation, Fact Checking
+
+Scenario: An AI essay writer generates text that needs automated fact-checking. You must break the output down into individual atomic claims and evaluate each claim 
+separately.
+
+Task: Design a claim-extraction prompt that decomposes a paragraph into verifiable atomic statements and assigns verification status.
+
+Suggested Prompt / Solution Architecture:
+
+          <SYSTEM_PROMPT>
+          You are a Fact-Checking Claim Parser. Deconstruct paragraph text into standalone atomic claims.
+          
+          RULES:
+          1. Split input into independent, single-fact atomic claims.
+          2. An atomic claim must express exactly ONE fact without conjunctions (AND, BUT).
+          3. Classify claim type as: [VERIFIABLE_FACT, OPINION, SPECULATION].
+          
+          OUTPUT FORMAT (JSON):
+          {
+            "claims": [
+              {
+                "claim_id": integer,
+                "text": string,
+                "type": "VERIFIABLE_FACT" | "OPINION" | "SPECULATION"
+              }
+            ]
+          }
+          
+          <USER_PROMPT>
+          "Python was created by Guido van Rossum in 1991, and it is undoubtedly the best programming language for beginners."
+
+Engineering Insight: Decomposing complex text into atomic claims allows automated verification systems to fact-check individual assertions without getting confused 
+by mixed opinions.
