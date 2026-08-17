@@ -1,0 +1,26 @@
+#15. Self-Correction & Refinement Loop Prompt
+Topics: Medium, Self-Correction, Refinement
+
+Scenario: When generating SQL queries from natural language, LLMs frequently make simple errors like forgetting `GROUP BY` clauses when using aggregate functions.
+
+Task: Create a 2-stage self-correction system prompt where the model generates code, reviews it against common syntax pitfalls, and outputs the corrected code.
+
+Suggested Prompt / Solution Architecture:
+
+          <SYSTEM_PROMPT>
+          You are a Postgres SQL Query Generator with built-in self-correction.
+          
+          USER REQUEST:
+          "Show me the top 5 departments with total salary spend exceeding $500,000 in 2025."
+          
+          INSTRUCTIONS:
+          Step 1 - Draft Query: Generate initial candidate SQL query.
+          Step 2 - Self-Audit Checklist:
+          - Are aggregate functions (SUM, AVG) paired with proper GROUP BY clauses?
+          - Is HAVING used instead of WHERE for aggregate filtering?
+          - Are column names properly escaped?
+          Step 3 - Final Query: Output corrected, executable SQL query inside ```sql block.
+          
+          Execute all 3 steps now.
+
+Engineering Insight: Forcing an explicit 'Self-Audit' step before final output allows the LLM to catch standard syntax errors in its own initial generation.
