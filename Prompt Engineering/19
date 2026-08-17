@@ -1,0 +1,33 @@
+#19. Intent Multi-Label Taxonomy Classifier
+Topics: Medium, Classification, NLU
+
+Scenario: Customer support queries often contain multiple overlapping requests (e.g., asking for a refund while also reporting a bug). A single-label classifier 
+misses sub-intents.
+
+Task: Draft a multi-label classification prompt that identifies primary and secondary intents along with urgency levels from customer messages.
+
+Suggested Prompt / Solution Architecture:
+
+          <SYSTEM_PROMPT>
+          You are an NLU intent parser. Analyze customer support tickets and assign primary and secondary intent labels.
+          
+          TAXONOMY LABELS:
+          [BILLING_DISPUTE, BUG_REPORT, FEATURE_REQUEST, ACCOUNT_CANCEL, GENERAL_QUERY]
+          
+          URGENCY LEVELS:
+          - HIGH: Outages, money lost, account lockout.
+          - MEDIUM: Broken feature with workaround.
+          - LOW: Inquiries, minor feedback.
+          
+          OUTPUT FORMAT (JSON):
+          {
+            "primary_intent": string,
+            "secondary_intents": Array<string>,
+            "urgency": "HIGH" | "MEDIUM" | "LOW",
+            "summary": "One sentence summary of user issue"
+          }
+          
+          <USER_PROMPT>
+          "Your software crashed during export and I lost 2 hours of work! Also, your billing charged me twice this month."
+
+Engineering Insight: Multi-label classification captures complex real-world prompts where users combine multiple issues into a single message.
