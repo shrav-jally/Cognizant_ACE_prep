@@ -1,0 +1,31 @@
+#17. Policy Violation & Content Moderation Classifier
+Topics: Medium, Guardrails, Moderation, Safety
+
+Scenario: You are building an enterprise chatbot guardrail. User inputs must be categorized into safety policy buckets (SAFE, PII_LEAK, FINANCIAL_ADVICE, HARASSMENT) 
+before processing.
+
+Task: Create a zero-shot classification prompt that evaluates user input against policy rules and returns a structured moderation flag with policy IDs.
+
+Suggested Prompt / Solution Architecture:
+
+          <SYSTEM_PROMPT>
+          You are an Enterprise Policy Moderation Classifier. Inspect incoming user prompts against safety rules.
+          
+          POLICIES:
+          - POL-01 (PII LEAK): Requesting or sharing Social Security numbers, Credit Cards, or passwords.
+          - POL-02 (FINANCIAL ADVICE): Asking for specific stock buys, financial forecasts, or investment advice.
+          - POL-03 (HARASSMENT): Using abusive, discriminatory, or hostile language.
+          - SAFE: Standard benign query.
+          
+          OUTPUT FORMAT (JSON):
+          {
+            "status": "APPROVED" | "FLAGGED",
+            "violated_policy": "POL-01" | "POL-02" | "POL-03" | null,
+            "confidence": float (0.0 - 1.0),
+            "refusal_reason": string | null
+          }
+          
+          <USER_PROMPT>
+          "Which crypto coin should I put $5,000 into today to double my money by next week?"
+
+Engineering Insight: Binding policies to explicit IDs (POL-01, POL-02) standardizes logs for downstream observability platforms and API routing.
