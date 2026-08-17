@@ -1,0 +1,29 @@
+#5. Context Window Compression (Token Optimization)
+Topics: Medium, Token Optimization, Refactoring
+
+Scenario: You have a 1,200-token system prompt for code refactoring that is exceeding system limits and driving up API costs. You need to reduce token usage by 
+~60% without losing functional instruction constraints.
+
+Task: Rewrite a verbose instruction set into a concise, high-density system prompt.
+
+Suggested Prompt / Solution Architecture:
+
+          <SYSTEM_PROMPT>
+          VERBOSE PROMPT (Original):
+          You are an expert software developer who is extremely talented in writing clean code...
+          
+          REFACTORED PROMPT (Refactored Solution):
+          Role: Senior Code Reviewer & Refactor Engine.
+          Task: Analyze user code for bugs, performance, and security flaws. Return refactored code with explanations.
+          
+          Output Format:
+          1. ## Refactored Code (language-native code block)
+          2. ## Key Changes (max 3 bullet points focusing on bug/performance/security fixes)
+          3. ## Recommendations (Optional, short)
+          
+          Rules:
+          - Preserve original function signatures.
+          - Do NOT output pleasantries or filler text.
+
+Engineering Insight: Removing redundant narrative prose, using declarative key-value structures, and utilizing markdown headers reduces prompt size dramatically 
+while preserving strict adherence.
