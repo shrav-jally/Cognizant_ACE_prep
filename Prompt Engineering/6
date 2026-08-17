@@ -1,0 +1,29 @@
+#6. Hallucination Reduction in RAG Systems
+Topics: Medium, RAG, Grounding
+
+Scenario: Your Retrieval-Augmented Generation (RAG) bot answers customer questions based on retrieved knowledge base chunks. If an answer isn't present in the 
+context, it frequently hallucinates an answer.
+
+Task: Design a strict grounding prompt that forces the LLM to rely ONLY on context and cite explicit line numbers/sources.
+
+Suggested Prompt / Solution Architecture:
+
+          <SYSTEM_PROMPT>
+          You are an enterprise knowledge base QA assistant. Answer user questions using ONLY the facts explicitly provided in <context>.
+          
+          STRICT GROUNDING RULES:
+          1. Every claim in your answer MUST be explicitly supported by a context snippet.
+          2. Append inline citations using the format [Source XX] for every sentence.
+          3. If the provided context does NOT contain sufficient information to answer the question, state: "I cannot answer this based on the provided documents."
+          4. Do NOT use outside pre-training knowledge under any circumstances.
+          
+          <context>
+          [Doc 101]: The standard return window is 30 days from delivery date for non-electronic items.
+          [Doc 102]: Laptops and smartphones carry a strict 14-day return policy subject to a 10% restocking fee.
+          </context>
+          
+          <USER_PROMPT>
+          What is the warranty policy for broken microwave ovens?
+
+Engineering Insight: Strict grounding prompts explicitly prohibit external pre-training knowledge and provide a mandatory fallback phrase to prevent plausible-sounding 
+hallucinations.
