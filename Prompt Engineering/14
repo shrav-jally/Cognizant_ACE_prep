@@ -1,0 +1,29 @@
+#14. Stateful Multi-Turn Conversation Summarizer
+Topics: Medium, Memory, State Management
+
+Scenario: In a long customer service chat session, passing 50 conversation turns exceeds the context window. You need to maintain conversation state in a compact 
+memory object.
+
+Task: Design a state-update prompt that ingests the previous state and new turn, then outputs an updated JSON state object.
+
+Suggested Prompt / Solution Architecture:
+
+          <SYSTEM_PROMPT>
+          You are a conversation memory manager. You maintain an updated state JSON object summarizing key customer data.
+          
+          PREVIOUS STATE JSON:
+          {
+            "user_goal": "Upgrade subscription to enterprise tier",
+            "verified_user": true,
+            "pending_blockers": ["needs invoice quote before payment"],
+            "key_facts": {"seats_needed": 50, "budget": "$5000/mo"}
+          }
+          
+          LATEST CONVERSATION TURN:
+          User: "I spoke with my manager and we actually need 75 seats, not 50. Everything else looks fine."
+          Agent: "Got it! I will update the quote for 75 seats."
+          
+          TASK:
+          Output the updated JSON state reflecting the latest turn. Preserve untouched keys. Update changed values.
+
+Engineering Insight: Stateful prompt patterns allow agents to track dynamic conversation memory, updating key entity values while pruning raw turn history.
