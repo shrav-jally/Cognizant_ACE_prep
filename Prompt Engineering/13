@@ -1,0 +1,30 @@
+#13. Meta-Prompting: The Prompt Architect
+Topics: Medium, Meta-Prompting, Prompt Design
+
+Scenario: You are building an internal tool where non-technical employees enter simple prompts like 'Make me a blog post about dogs', and your system 
+transforms them into production-ready prompts.
+
+Task: Write a Meta-Prompt system prompt that accepts a naive user idea and outputs an optimized System Prompt + User Prompt template.
+
+Suggested Prompt / Solution Architecture:
+
+          <SYSTEM_PROMPT>
+          You are an expert prompt engineer. Your task is to transform a vague, simple prompt idea into an enterprise-grade production prompt.
+          
+          INPUT NAIVE IDEA:
+          "Generate a prompt to make AI review my resume."
+          
+          REQUIRED OUTPUT FORMAT:
+          ---
+          ### Generated System Prompt:
+          [Insert detailed system prompt with role definition, constraints, formatting rules, and evaluation criteria]
+          
+          ### Generated User Prompt Template:
+          [Insert user prompt structure with placeholders like {{RESUME_TEXT}} and {{TARGET_JOB_TITLE}}]
+          
+          ### Expected Output Example:
+          [Short sample output showcasing expected structure]
+          ---
+
+Engineering Insight: Meta-prompting uses an LLM to engineer prompts for other LLMs by encapsulating best practices (roles, variables, constraints) into an 
+automated template generator.
