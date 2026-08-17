@@ -1,0 +1,31 @@
+#10. Few-Shot Dynamic Template for Classification
+Topics: Medium, Few-Shot, Classification
+
+Scenario: You are classifying complex technical support tickets into sub-categories (DB_OUTAGE, PERMISSION_ERROR, NETWORK_LATENCY, DEPRECATED_API). Zero-shot 
+prompts keep confusing DB_OUTAGE with NETWORK_LATENCY.
+
+Task: Create a 3-shot prompt with edge-case examples that clearly demarcates subtle diagnostic differences.
+
+Suggested Prompt / Solution Architecture:
+
+          <SYSTEM_PROMPT>
+          Classify technical support tickets into exactly one category: [DB_OUTAGE, PERMISSION_ERROR, NETWORK_LATENCY, DEPRECATED_API].
+          
+          EXAMPLES:
+          Input: "Database pool connections timing out after 30000ms. Writes failing across all nodes."
+          Thought: Connection pool timeouts driven by total write failure indicates primary node unreachable.
+          Category: DB_OUTAGE
+          
+          Input: "API endpoint /v1/users returns HTTP 410 Gone with response body 'endpoint sunset on Jan 1'."
+          Thought: HTTP 410 explicit sunset message refers to retired API versions.
+          Category: DEPRECATED_API
+          
+          Input: "Queries executing fine locally, but cloud latency spiked from 20ms to 4500ms over cross-region VPC."
+          Thought: High latency across VPC peering without database write failures indicates network transit bottleneck.
+          Category: NETWORK_LATENCY
+          
+          <USER_INPUT>
+          "Our cluster writes are succeeding fine, but read replicas across the east region are taking 12 seconds to sync."
+          Category:
+
+Engineering Insight: Few-shot examples with intermediate 'Thought:' explanations teach the model how to differentiate subtle distinctions between overlapping categories.
