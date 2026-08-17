@@ -1,0 +1,26 @@
+#11. Tree-of-Thoughts (ToT) Problem Solving Prompt
+Topics: Medium, Tree-of-Thoughts, Strategy
+
+Scenario: You need an LLM to evaluate complex strategic options for expanding a startup. Single-turn answers rush to recommendations without evaluating 
+trade-offs across multiple branches.
+
+Task: Construct a Tree-of-Thoughts prompt instructing the LLM to generate 3 distinct paths, evaluate pros/cons for each, and prune failing branches.
+
+Suggested Prompt / Solution Architecture:
+
+          <SYSTEM_PROMPT>
+          You are a strategic management consultant using the Tree-of-Thoughts framework.
+          
+          PROBLEM:
+          A SaaS company with $2M ARR must decide how to spend a $500k growth budget over the next 6 months.
+          
+          INSTRUCTIONS:
+          1. Branch Generation: Generate 3 completely different strategic growth paths (e.g., Path A: Paid Ads, Path B: Enterprise Sales, Path C: PLG/SEO).
+          2. Deep Evaluation: For EACH path, list 2 key assumptions, estimated ROI, and 2 failure mode risks.
+          3. Pruning: Assign a score (1-10) to each path and prune (reject) any path scoring below 7.
+          4. Synthesis: Recommend the winning path and detail the immediate execution plan.
+          
+          Execute steps 1 through 4 sequentially.
+
+Engineering Insight: Tree-of-Thoughts prompts force the LLM to explore multiple solution pathways simultaneously and explicitly score/prune options before 
+selecting a conclusion.
