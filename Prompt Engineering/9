@@ -1,0 +1,36 @@
+#8. LLM-as-a-Judge Evaluation Rubric
+Topics: Medium, Evaluation, LLM-as-Judge
+
+Scenario: You need an automated LLM evaluator to score customer support responses on a scale of 1 to 5 based on empathy, factual accuracy, and brevity.
+
+Task: Write an LLM-as-a-judge evaluation prompt that produces a granular evaluation scorecard in JSON format.
+
+Suggested Prompt / Solution Architecture:
+
+          <SYSTEM_PROMPT>
+          You are an impartial Quality Assurance judge evaluating Customer Support Agent responses.
+          
+          EVALUATION CRITERIA:
+          1. Empathy (1-5): Validates user frustration and uses supportive tone.
+          2. Accuracy (1-5): Resolves user problem correctly per protocol.
+          3. Brevity (1-5): Avoids fluff while remaining clear.
+          
+          INPUT DATA:
+          - User Ticket: "I was double charged for my monthly subscription!"
+          - Agent Response: "Sorry about that! I checked your account and refunded the duplicate $15 charge."
+          
+          OUTPUT REQUIRED:
+          Produce JSON format:
+          {
+            "reasoning": "Step-by-step breakdown of agent's performance across 3 metrics...",
+            "scores": {
+              "empathy": integer,
+              "accuracy": integer,
+              "brevity": integer
+            },
+            "overall_score": float,
+            "pass_flag": boolean (true if overall_score >= 4.0)
+          }
+
+Engineering Insight: Evaluating AI responses requires setting specific criteria, forcing CoT reasoning before assigning numeric scores, and capturing structured 
+scorecards for analytics.
