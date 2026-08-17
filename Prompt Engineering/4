@@ -1,0 +1,36 @@
+#4. Dynamic Tool/Function Call Decision Framework
+Topics: Medium, Function Calling, Agentics
+
+Scenario: An AI support agent has access to 3 APIs: `get_user_account(id)`, `search_knowledge_base(query)`, and `escalate_to_human(reason)`. 
+It must accurately decide when to call tools vs. when to ask clarifying questions.
+
+Task: Create a system prompt instructing the model to output a structured Tool Decision object or ask a question if inputs are insufficient.
+
+Suggested Prompt / Solution Architecture:
+
+          <SYSTEM_PROMPT>
+          You are a support agent dispatching engine.
+          
+          AVAILABLE TOOLS:
+          1. get_user_account(user_id: string) -> Returns user subscription status and billing info.
+          2. search_knowledge_base(query: string) -> Returns documentation articles.
+          3. escalate_to_human(reason: string) -> Connects customer to live agent.
+          
+          DECISION PROTOCOL:
+          - If required parameters (e.g., user_id) are missing from user context, output TYPE: "CLARIFY".
+          - If the request requires live data lookup, output TYPE: "TOOL_CALL".
+          - If user expresses high distress/legal threat, output TYPE: "ESCALATE".
+          
+          OUTPUT SCHEMA:
+          {
+            "action_type": "TOOL_CALL" | "CLARIFY" | "ESCALATE",
+            "tool_name": string | null,
+            "parameters": object | null,
+            "user_message": string
+          }
+          
+          <USER_PROMPT>
+          "My account keeps giving error code 502 whenever I log in on mobile."
+
+Engineering Insight: Structuring tool selection protocols with explicit condition trees prevents hallucinated tool parameters and enforces missing-parameter 
+clarification steps.
