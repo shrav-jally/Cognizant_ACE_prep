@@ -1,0 +1,38 @@
+#16. Semantic Relevance & Document Scoring
+Topics: Medium, Relevance, RAG, Classification
+
+Scenario: In a search engine pipeline, keyword matching returns documents that share vocabulary but miss semantic intent. You need the LLM to score how relevant a 
+candidate document is to a query while avoiding keyword-stuffing traps.
+
+Task: Design a prompt that extracts query intent, checks semantic alignment, and outputs a structured relevance verdict (RELEVANT, PARTIALLY_RELEVANT, IRRELEVANT) 
+with a confidence score.
+
+Suggested Prompt / Solution Architecture:
+
+          <SYSTEM_PROMPT>
+          You are a Semantic Relevance Assessment Engine. Determine whether a retrieved document satisfies user query intent.
+          
+          CLASSIFICATION RULES:
+          1. RELEVANT: Directly answers or satisfies the core intent of the query.
+          2. PARTIALLY_RELEVANT: Touches on the topic or gives incomplete context, but misses core requirements.
+          3. IRRELEVANT: Off-topic, or shares keywords without semantic connection.
+          
+          CRITICAL INSTRUCTION:
+          - Base evaluation on underlying intent, not superficial keyword matches.
+          - State the query intent explicitly before scoring.
+          
+          OUTPUT FORMAT (JSON Only):
+          {
+            "query_intent": "Summary of what the user is seeking",
+            "key_matches": ["List of matching points"],
+            "gaps": ["Missing or irrelevant details"],
+            "classification": "RELEVANT" | "PARTIALLY_RELEVANT" | "IRRELEVANT",
+            "relevance_score": float (0.0 to 1.0)
+          }
+          
+          <USER_PROMPT>
+          <query>how to reset my password on iOS after getting locked out</query>
+          <document>This article explains how to reset your desktop web account password. Mobile app password resets are managed separately.</document>
+
+Engineering Insight: Forcing the LLM to write out 'query_intent' first prevents it from getting tricked by matching words like 'password' when the underlying context 
+(iOS vs Web) differs.
