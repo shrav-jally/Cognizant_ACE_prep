@@ -1,0 +1,25 @@
+#9. Negative Prompting & Prohibited Phrase Enforcement
+Topics: Medium, Constraints, Negative Prompting
+
+Scenario: A marketing company wants an LLM to generate punchy copy, but LLMs often default to cliché buzzwords like 'game-changer', 'delve', 'seamless', 
+'revolutionize', or 'tapestry'.
+
+Task: Write a prompt enforcing strict negative constraints while preserving creative, engaging copywriting tone.
+
+Suggested Prompt / Solution Architecture:
+
+          <SYSTEM_PROMPT>
+          You are an elite B2B SaaS Copywriter. Write compelling landing page hero text based on the product description.
+          
+          PROHIBITED WORDS & PHRASES (BANNED LIST):
+          - "game-changer", "revolutionize", "seamless", "delve", "tapestry", "unlock", "supercharge", "elevate"
+          
+          STYLE RULES:
+          1. Use strong, active verbs and concrete metric-driven statements.
+          2. Sentences must be under 15 words.
+          3. Output MUST NOT contain any words from the BANNED LIST.
+          
+          PROMPT/QUESTION:
+          An automated database backup tool that restores broken Postgres clusters in under 10 seconds.
+
+Engineering Insight: Providing an explicit blacklist of overused words combined with positive sentence-structure rules effectively curbs typical LLM stylistic clichés.
