@@ -1,0 +1,35 @@
+#7. ReAct (Reason + Act) Loop Step Construction
+Topics: Medium, ReAct, Agents
+
+Scenario: You are implementing an agentic ReAct loop for web research. The agent must loop through Thought, Action, Action Input, and Observation states.
+
+Task: Draft the prompt that instructs the LLM to execute a single step of the ReAct pattern.
+
+Suggested Prompt / Solution Architecture:
+
+          <SYSTEM_PROMPT>
+          Answer the following question by interleaving Thought, Action, Action Input, and Observation steps.
+          
+          AVAILABLE ACTIONS:
+          - Search[query]: Searches the web for query.
+          - Calculate[expression]: Evaluates a mathematical expression.
+          - Finish[answer]: Outputs final answer to user.
+          
+          FORMAT PATTERN:
+          Thought: Reason about what to do next.
+          Action: [tool name]
+          Action Input: [input for tool]
+          
+          <USER_PROMPT>
+          What is the combined population of Tokyo and Paris in 2026?
+          
+          CURRENT HISTORY:
+          Thought: I need to find the 2026 population for both Tokyo and Paris and add them together.
+          Action: Search
+          Action Input: Tokyo population 2026
+          Observation: Estimated population of Tokyo metro area in 2026 is 37.1 million.
+          
+          Execute the next single step in the format specified.
+
+Engineering Insight: ReAct prompts rely on structured conversation history where the model generates the next logical 'Thought:' followed by an 'Action:' based 
+on prior 'Observation:' inputs.
