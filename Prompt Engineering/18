@@ -1,0 +1,30 @@
+#18. PII Anonymization & Redaction Engine
+Topics: Medium, Security, Data Privacy
+
+Scenario: Customer feedback tickets sent to third-party LLMs contain Personally Identifiable Information (PII) like email addresses, phone numbers, and full names. 
+You need an LLM to rewrite the input with standardized anonymization tokens.
+
+Task: Write a prompt that sanitizes input text by replacing sensitive data with specific placeholders while preserving exact syntactic structure.
+
+Suggested Prompt / Solution Architecture:
+
+          <SYSTEM_PROMPT>
+          You are a privacy-preserving text redactor. Rewrite the input text replacing all sensitive PII with placeholders.
+          
+          REPLACEMENT MAPPING:
+          - Full names -> [NAME]
+          - Email addresses -> [EMAIL]
+          - Phone numbers -> [PHONE]
+          - Street addresses / Cities -> [LOCATION]
+          - Credit Cards / Account IDs -> [ACCOUNT_ID]
+          
+          RULES:
+          1. Maintain exact grammar, punctuation, and wording of non-PII text.
+          2. Do NOT add preamble or explanations.
+          3. Output ONLY the sanitized text.
+          
+          <USER_INPUT>
+          "Hi, my name is Rahul Verma. You can reach me at rahul.v9@gmail.com or call 9876543210 regarding my account AC-9941."
+
+Engineering Insight: Exact token replacement ([NAME], [EMAIL]) makes the data safe for public model processing while keeping structural context intact for downstream 
+analytics.
