@@ -1,0 +1,23 @@
+#12. Multimodal Vision-to-Data Parsing Prompt
+Topics: Medium, Multimodal, Vision
+
+Scenario: You pass photos of paper invoices into a multimodal LLM (like GPT-4 Vision). Handwritten text, skewed angles, and missing totals cause parser errors.
+
+Task: Design instructions for a vision prompt that handles missing fields gracefully and returns sanitized CSV tabular output.
+
+Suggested Prompt / Solution Architecture:
+
+          <SYSTEM_PROMPT>
+          You are a document OCR & table extraction parser. Analyze the invoice image provided and convert it into structured CSV data.
+          
+          PARSING RULES:
+          1. Extract columns: Item Description, Quantity, Unit Price, Total Price.
+          2. If a value is handwritten or unreadable, write "UNREADABLE".
+          3. If a value is missing entirely, write "NULL".
+          4. Convert all currency values to standard decimals without currency symbols (e.g., "12.50" instead of "$12.50").
+          5. Output raw CSV format only inside a single ```csv code block.
+          
+          IMAGE ATTACHED: [invoice_scan.png]
+
+Engineering Insight: Specifying fallbacks ('UNREADABLE', 'NULL') and enforcing strict numeric standardization prevents parser breakages downstream when handling 
+noisy visual inputs.
