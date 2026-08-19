@@ -1,0 +1,60 @@
+Q4. Semantic-Aware Sentence Splitting
+Topics: Ingestion & Preprocessing
+
+Task: Implement a semantic chunker that groups sentences dynamically based on topic shift boundaries rather than fixed token lengths.
+
+Solution Architecture:
+
+    import re
+    import numpy as np
+    from typing import List, Dict, Any
+
+    class SemanticChunker:
+        def __init__(self, embedding_fn, similarity_threshold: float = 0.75):
+            self.embedding_fn = embedding_fn
+            self.similarity_threshold = similarity_threshold
+
+        def _cosine_similarity(self, vec_a: np.ndarray, vec_b: np.ndarray) -> float:
+            norm_a = np.linalg.norm(vec_a)
+            norm_b = np.linalg.norm(vec_b)
+            if norm_a == 0 or norm_b == 0:
+                return 0.0
+            return float(np.dot(vec_a, vec_b) / (norm_a * norm_b))
+
+        def split(self, text: str) -> List[Dict[str, Any]]:
+            sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
+            if not sentences:
+                return []
+
+            embeddings = self.embedding_fn(sentences)
+            
+            chunks = []
+            current_chunk = [sentences[0]]
+            current_embedding = embeddings[0]
+
+            for i in range(1, len(sentences)):
+                next_sentence = sentences[i]
+                next_embedding = embeddings[i]
+
+                sim = self._cosine_similarity(current_embedding, next_embedding)
+
+                if sim >= self.similarity_threshold:
+                    current_chunk.append(next_sentence)
+                    current_embedding = np.mean([current_embedding, next_embedding], axis=0)
+                else:
+                    chunks.append({
+                        "chunk_id": len(chunks),
+                        "text": " ".join(current_chunk),
+                        "sentence_count": len(current_chunk)
+                    })
+                    current_chunk = [next_sentence]
+                    current_embedding = next_embedding
+
+            if current_chunk:
+                chunks.append({
+                    "chunk_id": len(chunks),
+                    "text": " ".join(current_chunk),
+                    "sentence_count": len(current_chunk)
+                })
+
+            return chunks
