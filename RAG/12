@@ -1,0 +1,41 @@
+Q12. Index Persistence & Serialization
+Topics: In-Memory Indexing
+
+Task: Write methods `save_index(path)` and `load_index(path)` to persist in-memory embeddings and metadata payloads to disk using binary/JSON serialization.
+
+Solution Architecture:
+
+    import json
+    import numpy as np
+    from pathlib import Path
+    from typing import Union
+
+    class SerializableVectorStore(SimpleVectorStore):
+        """Extends SimpleVectorStore with disk persistence capabilities."""
+
+        def save_index(self, directory_path: Union[str, Path]) -> None:
+            """Saves embeddings array (.npy) and payloads (.json) to disk."""
+            target_dir = Path(directory_path)
+            target_dir.mkdir(parents=True, exist_ok=True)
+
+            np.save(target_dir / "vectors.npy", self.vectors)
+            
+            metadata = {
+                "dimension": self.dimension,
+                "payloads": self.payloads
+            }
+            with open(target_dir / "metadata.json", "w", encoding="utf-8") as f:
+                json.dump(metadata, f, indent=2)
+
+        @classmethod
+        def load_index(cls, directory_path: Union[str, Path]) -> "SerializableVectorStore":
+            """Loads index state from disk."""
+            target_dir = Path(directory_path)
+            
+            with open(target_dir / "metadata.json", "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+
+            store = cls(dimension=metadata["dimension"])
+            store.vectors = np.load(target_dir / "vectors.npy")
+            store.payloads = metadata["payloads"]
+            return store
