@@ -1,0 +1,52 @@
+Q16. Multi-Format Document Loader with Metadata Extraction
+
+SCENARIO: Raw enterprise data lives in multiple formats (txt, Json). Downstream hybrid vector search requires unified document objects with structured operational metadata.
+
+TASK: Write a unified Python class 'DocumentLoader' that ingests multiple file types and output standardized document dictionaries with normal text and file metadata.
+
+TOPICS: Medium, RAG, Ingestion, Python
+
+SOLUTION:
+import json
+from pathlib import Path
+from datetime import datetime
+from typing import Dict, Any, Union
+
+class DocumentLoader:
+    def __init__(self, file_path: Union[str, Path]):
+        self.file_path = Path(file_path)
+        if not self.file_path.exists():
+            raise FileNotFoundError(f"File not found: {self.file_path}")
+
+    def load(self) -> Dict[str, Any]:
+        ext = self.file_path.suffix.lower()
+        if ext == ".txt":
+            content = self._load_txt()
+        elif ext == ".json":
+            content = self._load_json()
+        else:
+            raise ValueError(f"Unsupported file format: {ext}")
+
+        stats = self.file_path.stat()
+        return {
+            "text": content,
+            "metadata": {
+                "source_path": str(self.file_path.resolve()),
+                "file_type": ext.lstrip("."),
+                "file_size": stats.st_size,
+                "timestamp": datetime.fromtimestamp(stats.st_mtime).isoformat()
+            }
+        }
+
+    def _load_txt(self) -> str:
+        with open(self.file_path, "r", encoding="utf-8") as f:
+            return f.read().strip()
+
+    def _load_json(self) -> str:
+        with open(self.file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return "\n".join(f"{k}: {v}" for k, v in data.items())
+        elif isinstance(data, list):
+            return "\n".join(str(item) for item in data)
+        return str(data)
