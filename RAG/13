@@ -1,0 +1,49 @@
+Q13. Modular Pipeline Design (Factory Pattern)
+Topics: Module Architecture
+
+Task: Design a clean architecture separating `Ingestor`, `Embedder`, and `VectorIndex` into distinct decoupled modules orchestrating a unified `RAGPipeline` class.
+
+Solution Architecture:
+
+    from typing import List, Dict, Any, Union
+    from pathlib import Path
+
+    class RAGPipeline:
+        """Orchestrates document ingestion, chunking, embedding generation, and vector indexing."""
+
+        def __init__(self, loader_cls, chunker_fn, embedder, vector_store):
+            self.loader_cls = loader_cls
+            self.chunker_fn = chunker_fn
+            self.embedder = embedder
+            self.vector_store = vector_store
+
+        def ingest_document(self, file_path: Union[str, Path]) -> int:
+            """Runs an end-to-end ingestion pipeline on a single document file."""
+            loader = self.loader_cls(file_path)
+            doc_data = loader.load()
+
+            chunks = self.chunker_fn(doc_data["content"])
+
+            payloads = []
+            texts = []
+            for chunk in chunks:
+                payload = {
+                    "text": chunk["text"],
+                    "chunk_id": chunk["chunk_id"],
+                    **doc_data["metadata"]
+                }
+                payloads.append(payload)
+                texts.append(chunk["text"])
+
+            embeddings = self.embedder.embed_texts(texts)
+
+            self.vector_store.add_documents(embeddings, payloads)
+            
+            return len(chunks)
+
+        def query(self, query_text: str, top_k: int = 3) -> List[Dict[str, Any]]:
+            """Queries the RAG index and returns relevant text context with metadata."""
+            query_vec = self.embedder.embed_texts([query_text])[0]
+            results = self.vector_store.similarity_search(query_vec, top_k=top_k)
+            
+            return [{"score": score, **payload} for payload, score in results]
