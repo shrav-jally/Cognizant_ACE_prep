@@ -1,0 +1,22 @@
+Q25. RAG Query Hypothetical Document Embeddings (HyDE) Prompt
+
+SCENARIO: Short, ambiguous user queries often have low vector similarity to long, detailed technical documentation chunks.
+
+TASK: Design a HyDE (Hypothetical Document Embeddings) system prompt that generates a plausible hypothetical answer to be embedded and searched instead of the raw user query.
+
+TOPICS: Medium, Query Transformation, RAG
+
+SOLUTION:
+from typing import Dict
+
+def generate_hyde_prompt(user_query: str) -> Dict[str, str]:
+    system_instruction = (
+        "You are an expert technical assistant. Given a brief user question, write a "
+        "detailed, hypothetical passage that directly answers the question. The answer "
+        "should sound like an excerpt from official technical documentation."
+    )
+    user_prompt = f"Question: {user_query}\n\nHypothetical Passage:"
+    return {
+        "system_prompt": system_instruction,
+        "user_prompt": user_prompt
+    }
