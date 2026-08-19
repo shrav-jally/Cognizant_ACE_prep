@@ -1,0 +1,34 @@
+Q21. Semantic Deduplication & Cosine Similarity Filtering
+
+SCENARIO: Scraped datasets often contain duplicated or near-identical text blocks. Ingesting redundant chunks wastes vector database storage and skews search results.
+
+TASK: Write a deduplication function in Python that takes a list of dense vector embeddings and drops chunks when cosine similarity exceeds a threshold (e.g., 0.92).
+
+TOPICS: Medium+, Math, Deduplication
+
+SOLUTION:
+import numpy as np
+from typing import List, Dict, Any, Tuple
+
+def deduplicate_embeddings(
+    chunks: List[Dict[str, Any]], 
+    embeddings: np.ndarray, 
+    threshold: float = 0.92
+) -> Tuple[List[Dict[str, Any]], np.ndarray]:
+    norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+    normalized = embeddings / np.maximum(norms, 1e-12)
+
+    keep_indices = []
+    for i in range(len(chunks)):
+        is_duplicate = False
+        for j in keep_indices:
+            similarity = np.dot(normalized[i], normalized[j])
+            if similarity >= threshold:
+                is_duplicate = True
+                break
+        if not is_duplicate:
+            keep_indices.append(i)
+
+    deduped_chunks = [chunks[i] for i in keep_indices]
+    deduped_embeddings = embeddings[keep_indices]
+    return deduped_chunks, deduped_embeddings
