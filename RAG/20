@@ -1,0 +1,37 @@
+Q20. Parent-Child (Hierarchical) Chunk Mapping Indexer
+
+SCENARIO: Small chunks vector search accurately, but large chunks provide richer context to the LLM generation step. Advanced RAG uses a Parent-Child chunking architecture.
+
+TASK: Design a Python function that builds small child chunks for vector index retrieval while linking them back to larger parent chunks for LLM context generation.
+
+TOPICS: Medium+, RAG, Indexing, Parent-Child
+
+SOLUTION:
+import uuid
+from typing import List, Dict, Any
+
+def create_parent_child_index(
+    text: str, 
+    parent_size: int = 1000, 
+    child_size: int = 200
+) -> Dict[str, Any]:
+    parents = []
+    children = []
+
+    for i in range(0, len(text), parent_size):
+        parent_id = str(uuid.uuid4())
+        parent_text = text[i:i + parent_size]
+        parents.append({
+            "parent_id": parent_id,
+            "text": parent_text
+        })
+
+        for j in range(0, len(parent_text), child_size):
+            child_text = parent_text[j:j + child_size]
+            children.append({
+                "child_id": str(uuid.uuid4()),
+                "parent_id": parent_id,
+                "text": child_text
+            })
+
+    return {"parents": parents, "children": children}
