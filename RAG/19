@@ -1,0 +1,30 @@
+Q19. Contextual Header & Global Metadata Injector
+
+SCENARIO: When long documents are split into tiny chunks, isolated sentences like 'Pricing is $50/mo' lose their parent document context ('Enterprise SaaS Plan').
+
+TASK: Write a function 'inject_contextual_metadata(chunks, doc_title, section_header)' that prepends contextual headers directly into chunk text prior to embedding.
+
+TOPICS: Medium+, RAG, Chunking, Embeddings
+
+SOLUTION:
+from typing import List, Dict, Any
+
+def inject_contextual_metadata(
+    chunks: List[Dict[str, Any]], 
+    doc_title: str, 
+    section_header: str
+) -> List[Dict[str, Any]]:
+    updated_chunks = []
+    for chunk in chunks:
+        raw_text = chunk.get("text", "")
+        context_prefix = f"Document Title: {doc_title} | Section: {section_header}\n"
+        enriched_text = context_prefix + raw_text
+        
+        chunk_copy = chunk.copy()
+        chunk_copy["text"] = enriched_text
+        chunk_copy["metadata"] = chunk_copy.get("metadata", {})
+        chunk_copy["metadata"]["doc_title"] = doc_title
+        chunk_copy["metadata"]["section_header"] = section_header
+        updated_chunks.append(chunk_copy)
+        
+    return updated_chunks
