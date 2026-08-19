@@ -1,0 +1,48 @@
+Q18. Boilerplate Cleaner & Markdown Header Anchor Extractor
+
+SCENARIO: HTML scraps, excess whitespace, and navigation noise degrade embedding quality, but structural Markdown headers (#, ##) contain vital hierarchical context.
+
+TASK: Create a text sanitizer that strips HTML tags and non-printable noise while extracting active header hierarchies to attach to chunk metadata.
+
+TOPICS: Medium, RAG, Preprocessing
+
+SOLUTION:
+import re
+from typing import List, Dict, Any
+
+def clean_and_extract_headers(markdown_text: str) -> List[Dict[str, Any]]:
+    cleaned = re.sub(r'<[^>]+>', '', markdown_text)
+    cleaned = re.sub(r'[^\x00-\x7F]+', '', cleaned)
+    lines = [re.sub(r'\s+', ' ', line).strip() for line in cleaned.split('\n')]
+    
+    extracted_chunks = []
+    current_headers = {}
+    buffer = []
+
+    for line in lines:
+        if not line:
+            continue
+        header_match = re.match(r'^(#{1,6})\s+(.+)$', line)
+        if header_match:
+            if buffer:
+                header_path = " > ".join(current_headers[k] for k in sorted(current_headers.keys()))
+                extracted_chunks.append({
+                    "content": " ".join(buffer),
+                    "header_path": header_path or "Root"
+                })
+                buffer = []
+            level = len(header_match.group(1))
+            title = header_match.group(2).strip()
+            current_headers = {k: v for k, v in current_headers.items() if k < level}
+            current_headers[level] = title
+        else:
+            buffer.append(line)
+
+    if buffer:
+        header_path = " > ".join(current_headers[k] for k in sorted(current_headers.keys()))
+        extracted_chunks.append({
+            "content": " ".join(buffer),
+            "header_path": header_path or "Root"
+        })
+
+    return extracted_chunks
