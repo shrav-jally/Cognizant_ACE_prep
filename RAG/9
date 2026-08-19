@@ -1,0 +1,42 @@
+Q9. Pure NumPy Cosine Similarity Vector Store
+Topics: In-Memory Indexing
+
+Task: Build an in-memory vector store `SimpleVectorStore` with `add_documents(vectors, metadata)` and `similarity_search(query_vector, top_k)` using pure matrix dot products.
+
+Solution Architecture:
+
+    import numpy as np
+    from typing import List, Dict, Any, Tuple
+
+    class SimpleVectorStore:
+        """In-memory vector store using pure NumPy matrix dot products."""
+
+        def __init__(self, dimension: int):
+            self.dimension = dimension
+            self.vectors = np.empty((0, dimension), dtype=np.float32)
+            self.payloads: List[Dict[str, Any]] = []
+
+        def _l2_normalize(self, vec: np.ndarray) -> np.ndarray:
+            norm = np.linalg.norm(vec, axis=-1, keepdims=True)
+            return vec / np.maximum(norm, 1e-12)
+
+        def add_documents(self, vectors: np.ndarray, metadata: List[Dict[str, Any]]) -> None:
+            """Adds embedding vectors and corresponding metadata payloads."""
+            arr = np.asarray(vectors, dtype=np.float32)
+            if arr.shape[1] != self.dimension:
+                raise ValueError(f"Expected vector dimension {self.dimension}, got {arr.shape[1]}")
+            
+            normalized = self._l2_normalize(arr)
+            self.vectors = np.vstack([self.vectors, normalized]) if self.vectors.size else normalized
+            self.payloads.extend(metadata)
+
+        def similarity_search(self, query_vector: np.ndarray, top_k: int = 5) -> List[Tuple[Dict[str, Any], float]]:
+            """Returns top_k most similar document metadata payloads with cosine similarity scores."""
+            if len(self.vectors) == 0:
+                return []
+
+            q_norm = self._l2_normalize(np.asarray(query_vector, dtype=np.float32).reshape(1, -1))
+            scores = np.dot(self.vectors, q_norm.T).flatten()
+
+            top_indices = np.argsort(scores)[::-1][:top_k]
+            return [(self.payloads[idx], float(scores[idx])) for idx in top_indices]
