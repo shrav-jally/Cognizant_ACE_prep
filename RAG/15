@@ -1,0 +1,35 @@
+Q15. End-to-End RAG Ingestion Unit Testing Suite
+Topics: Module Architecture
+
+Task: Write unit tests using `pytest` and mock interfaces to verify document chunking bounds, vector similarity ranking, and module isolation.
+
+Solution Architecture:
+
+    import pytest
+    import numpy as np
+
+    class MockEmbedder:
+        def embed_texts(self, texts):
+            # Return deterministic mock 4D vectors
+            return np.ones((len(texts), 4), dtype=np.float32)
+
+    def test_sliding_window_chunker_bounds():
+        text = "Sentence one. Sentence two. Sentence three."
+        chunks = sliding_window_chunker(text, chunk_size=30, overlap_size=10)
+        assert len(chunks) > 0
+        for chunk in chunks:
+            assert "text" in chunk
+            assert "chunk_id" in chunk
+
+    def test_vector_store_similarity_ranking():
+        store = SimpleVectorStore(dimension=2)
+        vectors = np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
+        metadata = [{"id": 1}, {"id": 2}]
+        store.add_documents(vectors, metadata)
+
+        query = np.array([0.9, 0.1], dtype=np.float32)
+        results = store.similarity_search(query, top_k=1)
+        
+        assert len(results) == 1
+        assert results[0][0]["id"] == 1
+        assert results[0][1] > 0.8
