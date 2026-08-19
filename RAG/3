@@ -1,0 +1,58 @@
+Q3. Markdown & Structural Document Preprocessing
+Topics: Ingestion & Preprocessing
+
+Task: Create a processor that strips out noisy boilerplate (HTML tags, excess whitespace, non-alphanumeric noise) while preserving structural headers ('#', '##') as metadata anchors.
+
+Solution Architecture:
+
+    import re
+    from typing import List, Dict, Any
+
+    class MarkdownStructuralPreprocessor:
+        def __init__(self):
+            self.html_cleaner = re.compile(r'<[^>]+>')
+            self.header_pattern = re.compile(r'^(#{1,6})\s+(.+)$')
+
+        def clean_text(self, text: str) -> str:
+            text = self.html_cleaner.sub('', text)
+            text = text.replace('\xa0', ' ')
+            text = re.sub(r'[ \t]+', ' ', text)
+            text = re.sub(r'\n\s*\n', '\n\n', text)
+            return text.strip()
+
+        def process_document(self, markdown_text: str) -> List[Dict[str, Any]]:
+            cleaned_text = self.clean_text(markdown_text)
+            lines = cleaned_text.split('\n')
+            
+            sections = []
+            header_stack = {}
+            current_content = []
+
+            for line in lines:
+                header_match = self.header_pattern.match(line.strip())
+                if header_match:
+                    if current_content:
+                        sections.append(self._build_section(header_stack, current_content))
+                        current_content = []
+
+                    level = len(header_match.group(1))
+                    title = header_match.group(2).strip()
+                    
+                    header_stack = {lvl: h for lvl, h in header_stack.items() if lvl < level}
+                    header_stack[level] = title
+                else:
+                    if line.strip():
+                        current_content.append(line.strip())
+
+            if current_content:
+                sections.append(self._build_section(header_stack, current_content))
+
+            return sections
+
+        def _build_section(self, header_stack: Dict[int, str], lines: List[str]) -> Dict[str, Any]:
+            breadcrumb = " > ".join([header_stack[k] for k in sorted(header_stack.keys())])
+            return {
+                "section_header": header_stack.get(max(header_stack.keys(), default=0), "Root"),
+                "header_path": breadcrumb,
+                "content": " ".join(lines)
+            }
