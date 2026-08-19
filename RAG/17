@@ -1,0 +1,42 @@
+Q17. Sliding Window Chunker with Sentence Boundary Protection
+
+SCENARIO: Naive fixed character chunking often slices sentences mid-word or mid-thought, causing lost context and corrupted vector embeddings during RAG retrieval.
+
+TASK: Implement a sliding window chunker 'sentence_aware_chunker(text, chunk_size, overlap)' in Python without external libraries that respects sentence boundaries.
+
+TOPICS: Medium+, Python, RAG, Chunking
+
+SOLUTION:
+import re
+from typing import List, Dict, Any
+
+def sentence_aware_chunker(text: str, chunk_size: int = 200, overlap: int = 50) -> List[Dict[str, Any]]:
+    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
+    chunks = []
+    current_chunk = []
+    current_length = 0
+
+    for sentence in sentences:
+        sentence_len = len(sentence)
+        if current_length + sentence_len > chunk_size and current_chunk:
+            chunk_text = " ".join(current_chunk)
+            chunks.append({"chunk_id": len(chunks), "text": chunk_text})
+            
+            overlap_sentences = []
+            overlap_len = 0
+            for s in reversed(current_chunk):
+                if overlap_len + len(s) <= overlap:
+                    overlap_sentences.insert(0, s)
+                    overlap_len += len(s)
+                else:
+                    break
+            current_chunk = overlap_sentences
+            current_length = sum(len(s) for s in current_chunk)
+
+        current_chunk.append(sentence)
+        current_length += sentence_len
+
+    if current_chunk:
+        chunks.append({"chunk_id": len(chunks), "text": " ".join(current_chunk)})
+
+    return chunks
