@@ -1,0 +1,28 @@
+Q24. Table-to-Markdown & CSV Ingestion Parser
+
+SCENARIO: Chunking tabular data using character count splitters destroys column headers and breaks table row associations.
+
+TASK: Write a CSV table loader 'parse_csv_to_mg_documents(csv_string)' that converts structured rows into key-value narrative representations for optimal embedding.
+
+TOPICS: Medium+, Data Extraction, Tables
+
+SOLUTION:
+import csv
+import io
+from typing import List, Dict, Any
+
+def parse_csv_to_mg_documents(csv_string: str) -> List[Dict[str, Any]]:
+    reader = csv.DictReader(io.StringIO(csv_string.strip()))
+    documents = []
+
+    for row_idx, row in enumerate(reader):
+        narrative_parts = [f"{col.strip()}: {val.strip()}" for col, val in row.items() if val]
+        narrative_text = f"Record Row {row_idx + 1} -> " + ", ".join(narrative_parts)
+        
+        documents.append({
+            "doc_id": f"row_{row_idx + 1}",
+            "text": narrative_text,
+            "metadata": dict(row)
+        })
+
+    return documents
