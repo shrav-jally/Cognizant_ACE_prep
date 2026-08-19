@@ -1,0 +1,26 @@
+Q22. BM25 Keyword + Vector Hybrid Search Score Normalizer
+
+SCENARIO: Combining sparse keyword retrieval (BM25) with dense semantic vector search yields the best retrieval accuracy. However, raw BM25 scores (0-50+) and Cosine scores (0-1) cannot be added together directly.
+
+TASK: Implement a Reciprocal Rank Fusion (RRF) function 'apply_rrf(bm25_ranks, vector_ranks, k=60)' to combine keyword and vector search rankings safely.
+
+TOPICS: Medium+, Hybrid Search
+
+SOLUTION:
+from collections import defaultdict
+from typing import List, Tuple
+
+def apply_rrf(
+    bm25_ranks: List[str], 
+    vector_ranks: List[str], 
+    k: int = 60
+) -> List[Tuple[str, float]]:
+    rrf_scores = defaultdict(float)
+
+    for rank, doc_id in enumerate(bm25_ranks):
+        rrf_scores[doc_id] += 1.0 / (k + rank + 1)
+
+    for rank, doc_id in enumerate(vector_ranks):
+        rrf_scores[doc_id] += 1.0 / (k + rank + 1)
+
+    return sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
