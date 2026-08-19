@@ -1,0 +1,73 @@
+Q2. Sliding Window Text Splitter with Overlap
+Topics: Ingestion & Preprocessing
+
+Task: Implement a custom recursive sliding window text chunker `sliding_window_chunker(text, chunk_size, overlap_size)` without using external LLM libraries. Preserve sentence boundary integrity.
+
+Solution Architecture:
+
+    import re
+    from typing import List, Dict, Any
+
+    def sliding_window_chunker(
+        text: str, 
+        chunk_size: int = 500, 
+        overlap_size: int = 100
+    ) -> List[Dict[str, Any]]:
+        if overlap_size >= chunk_size:
+            raise ValueError("overlap_size must be strictly less than chunk_size")
+
+        sentence_endings = re.compile(r'(?<=[.!?])\s+')
+        sentences = sentence_endings.split(text.strip())
+
+        chunks = []
+        current_chunk = []
+        current_length = 0
+        chunk_index = 0
+
+        for sentence in sentences:
+            sentence_len = len(sentence)
+            
+            if sentence_len > chunk_size:
+                for i in range(0, sentence_len, chunk_size - overlap_size):
+                    sub_str = sentence[i : i + chunk_size]
+                    chunks.append({
+                        "chunk_id": chunk_index,
+                        "text": sub_str,
+                        "length": len(sub_str)
+                    })
+                    chunk_index += 1
+                continue
+
+            if current_length + sentence_len > chunk_size:
+                chunk_text = " ".join(current_chunk)
+                chunks.append({
+                    "chunk_id": chunk_index,
+                    "text": chunk_text,
+                    "length": len(chunk_text)
+                })
+                chunk_index += 1
+
+                overlap_sentences = []
+                accumulated_overlap = 0
+                for prev_sentence in reversed(current_chunk):
+                    if accumulated_overlap + len(prev_sentence) <= overlap_size:
+                        overlap_sentences.insert(0, prev_sentence)
+                        accumulated_overlap += len(prev_sentence)
+                    else:
+                        break
+                
+                current_chunk = overlap_sentences
+                current_length = sum(len(s) for s in current_chunk)
+
+            current_chunk.append(sentence)
+            current_length += sentence_len
+
+        if current_chunk:
+            chunk_text = " ".join(current_chunk)
+            chunks.append({
+                "chunk_id": chunk_index,
+                "text": chunk_text,
+                "length": len(chunk_text)
+            })
+
+        return chunks
