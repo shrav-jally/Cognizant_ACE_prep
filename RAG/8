@@ -1,0 +1,23 @@
+Q8. Multi-Modal Metadata Ingestion & Embeddings
+Topics: Embeddings
+
+Task: Implement a function that formats document chunks into rich structured contextual prompts (e.g., combining title, breadcrumb tags, and content) before generating embeddings.
+
+Solution Architecture:
+
+    from typing import Dict, Any
+
+    def format_rich_contextual_prompt(chunk: Dict[str, Any], metadata: Dict[str, Any]) -> str:
+        """Constructs a rich contextual header around raw text for embedding generation."""
+        title = metadata.get("title", "Untitled Document")
+        header_path = chunk.get("header_path", "General")
+        file_type = metadata.get("file_type", "unknown")
+        content = chunk.get("text", chunk.get("content", ""))
+
+        contextual_prompt = (
+            f"Document Title: {title}\n"
+            f"Source Type: {file_type}\n"
+            f"Header Path: {header_path}\n"
+            f"Content Summary / Text:\n{content}"
+        )
+        return contextual_prompt
