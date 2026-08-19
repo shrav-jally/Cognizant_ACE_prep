@@ -1,0 +1,42 @@
+Q7. Exponential Backoff & Retry Wrapper for Vector APIs
+Topics: Embeddings
+
+Task: Create a robust Python decorator `@retry_with_backoff` to handle rate limits and transient errors during embedding API generation calls.
+
+Solution Architecture:
+
+    import time
+    import random
+    import functools
+    from typing import Callable, Type, Tuple
+
+    def retry_with_backoff(
+        max_retries: int = 5,
+        initial_delay: float = 1.0,
+        backoff_factor: float = 2.0,
+        jitter: bool = True,
+        retryable_exceptions: Tuple[Type[BaseException], ...] = (Exception,)
+    ) -> Callable:
+        """Decorator for retrying unstable network or API calls with exponential backoff."""
+        
+        def decorator(func: Callable) -> Callable:
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs):
+                delay = initial_delay
+                
+                for attempt in range(1, max_retries + 1):
+                    try:
+                        return func(*args, **kwargs)
+                    except retryable_exceptions as e:
+                        if attempt == max_retries:
+                            print(f"[Retry Limit Reached] Failed after {max_retries} attempts.")
+                            raise e
+                        
+                        sleep_time = delay * (random.uniform(0.8, 1.2) if jitter else 1.0)
+                        print(f"[Warning] Attempt {attempt} failed ({str(e)}). Retrying in {sleep_time:.2f}s...")
+                        time.sleep(sleep_time)
+                        
+                        delay *= backoff_factor
+
+            return wrapper
+        return decorator
