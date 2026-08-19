@@ -1,0 +1,34 @@
+Q5. Batch Embedding Pipeline Interface
+Topics: Embeddings
+
+Task: Write an Abstract Base Class `BaseEmbeddingProvider` with implementations for local HuggingFace/SentenceTransformers and API-based models. Include dynamic batching logic.
+
+Solution Architecture:
+
+    from abc import ABC, abstractmethod
+    import numpy as np
+    from typing import List
+
+    class BaseEmbeddingProvider(ABC):
+        """Abstract base interface for generating embedding vectors with batching."""
+
+        def __init__(self, batch_size: int = 32):
+            self.batch_size = batch_size
+
+        @abstractmethod
+        def _embed_batch(self, texts: List[str]) -> np.ndarray:
+            """Abstract method to generate embeddings for a single batch."""
+            pass
+
+        def embed_texts(self, texts: List[str]) -> np.ndarray:
+            """Dynamic batching engine that processes text list in chunks."""
+            if not texts:
+                return np.empty((0, 0), dtype=np.float32)
+
+            all_embeddings = []
+            for i in range(0, len(texts), self.batch_size):
+                batch = texts[i : i + self.batch_size]
+                embeddings = self._embed_batch(batch)
+                all_embeddings.append(embeddings)
+
+            return np.vstack(all_embeddings)
