@@ -1,0 +1,28 @@
+Q6. In-Memory Vector L2 Normalization
+Topics: Embeddings
+
+Task: Write a pure NumPy utility function to L2 normalize high-dimensional dense embedding vectors to prepare them for inner product / cosine distance calculations.
+
+Solution Architecture:
+
+    import numpy as np
+    from typing import Union
+
+    def l2_normalize(vectors: np.ndarray, eps: float = 1e-12) -> np.ndarray:
+        """
+        Performs L2 normalization on a 1D vector or a 2D matrix of embeddings.
+        When vectors are L2-normalized, dot product equals cosine similarity.
+        """
+        arr = np.asarray(vectors, dtype=np.float32)
+        
+        if arr.ndim == 1:
+            norm = np.linalg.norm(arr)
+            return arr / max(norm, eps)
+        
+        elif arr.ndim == 2:
+            norms = np.linalg.norm(arr, axis=1, keepdims=True)
+            norms = np.maximum(norms, eps)
+            return arr / norms
+        
+        else:
+            raise ValueError(f"Expected 1D or 2D array, got {arr.ndim}D array.")
