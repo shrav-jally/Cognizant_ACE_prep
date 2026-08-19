@@ -1,0 +1,43 @@
+Q10. Metadata Filtered In-Memory Retrieval
+Topics: In-Memory Indexing
+
+Task: Extend your in-memory vector index to accept strict boolean metadata filtering (e.g., `category == "finance"`) during cosine similarity ranking.
+
+Solution Architecture:
+
+    import numpy as np
+    from typing import List, Dict, Any, Tuple
+
+    class FilteredVectorStore(SimpleVectorStore):
+        """Vector store supporting strict key-value metadata filtering during search."""
+
+        def similarity_search_with_filter(
+            self, 
+            query_vector: np.ndarray, 
+            filter_dict: Dict[str, Any], 
+            top_k: int = 5
+        ) -> List[Tuple[Dict[str, Any], float]]:
+            if len(self.vectors) == 0:
+                return []
+
+            matching_indices = []
+            for idx, payload in enumerate(self.payloads):
+                matches = all(payload.get(k) == v for k, v in filter_dict.items())
+                if matches:
+                    matching_indices.append(idx)
+
+            if not matching_indices:
+                return []
+
+            filtered_vectors = self.vectors[matching_indices]
+            q_norm = self._l2_normalize(np.asarray(query_vector, dtype=np.float32).reshape(1, -1))
+            scores = np.dot(filtered_vectors, q_norm.T).flatten()
+
+            top_sub_indices = np.argsort(scores)[::-1][:top_k]
+            
+            results = []
+            for sub_idx in top_sub_indices:
+                original_idx = matching_indices[sub_idx]
+                results.append((self.payloads[original_idx], float(scores[sub_idx])))
+
+            return results
