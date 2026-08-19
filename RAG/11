@@ -1,0 +1,71 @@
+Q11. In-Memory Inverted Index + Hybrid Search (BM25 + Dense)
+Topics: In-Memory Indexing
+
+Task: Implement a hybrid retriever that calculates a weighted Reciprocal Rank Fusion (RRF) score combining sparse BM25 keyword search with dense vector search.
+
+Solution Architecture:
+
+    import math
+    from collections import defaultdict
+    from typing import List, Dict, Any, Tuple
+
+    class SimpleBM25:
+        """Basic in-memory BM25 sparse keyword retriever."""
+
+        def __init__(self, corpus: List[str], k1: float = 1.5, b: float = 0.75):
+            self.k1 = k1
+            self.b = b
+            self.corpus = corpus
+            self.doc_len = [len(doc.lower().split()) for doc in corpus]
+            self.avgdl = sum(self.doc_len) / max(len(corpus), 1)
+            self.doc_freqs: List[Dict[str, int]] = []
+            self.idf: Dict[str, float] = {}
+            self._build_index()
+
+        def _build_index(self):
+            df = defaultdict(int)
+            for doc in self.corpus:
+                frequencies = defaultdict(int)
+                for word in doc.lower().split():
+                    frequencies[word] += 1
+                self.doc_freqs.append(frequencies)
+                for word in frequencies:
+                    df[word] += 1
+
+            N = len(self.corpus)
+            for word, freq in df.items():
+                self.idf[word] = math.log((N - freq + 0.5) / (freq + 0.5) + 1.0)
+
+        def search(self, query: str, top_k: int = 10) -> List[Tuple[int, float]]:
+            scores = []
+            query_words = query.lower().split()
+            for idx, doc_freq in enumerate(self.doc_freqs):
+                score = 0.0
+                doc_l = self.doc_len[idx]
+                for word in query_words:
+                    if word not in doc_freq:
+                        continue
+                    freq = doc_freq[word]
+                    idf = self.idf.get(word, 0.0)
+                    numerator = freq * (self.k1 + 1)
+                    denominator = freq + self.k1 * (1 - self.b + self.b * (doc_l / self.avgdl))
+                    score += idf * (numerator / denominator)
+                scores.append((idx, score))
+            return sorted(scores, key=lambda x: x[1], reverse=True)[:top_k]
+
+    def reciprocal_rank_fusion(
+        dense_results: List[Tuple[int, float]], 
+        bm25_results: List[Tuple[int, float]], 
+        rrf_k: int = 60
+    ) -> List[Tuple[int, float]]:
+        """Merges two ranked lists using Reciprocal Rank Fusion (RRF)."""
+        rrf_scores = defaultdict(float)
+
+        for rank, (doc_id, _) in enumerate(dense_results):
+            rrf_scores[doc_id] += 1.0 / (rrf_k + rank + 1)
+
+        for rank, (doc_id, _) in enumerate(bm25_results):
+            rrf_scores[doc_id] += 1.0 / (rrf_k + rank + 1)
+
+        sorted_results = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
+        return sorted_results
