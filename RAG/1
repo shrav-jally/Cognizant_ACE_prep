@@ -1,0 +1,63 @@
+Q1. Multi-Format Raw Document Ingestion Engine
+Topics: Ingestion & Preprocessing
+
+Task: Write a Python class 'DocumentLoader' that loads and normalizes raw text from multiple source types ('.txt', '.pdf', '.json'). Extract content along with metadata ('source_path', 'file_type', 'timestamp').
+
+Solution Architecture:
+
+    import json
+    from pathlib import Path
+    from typing import Dict, Any, Union
+    from datetime import datetime
+    import pypdf
+
+    class DocumentLoader:
+        """Ingests raw text from .txt, .pdf, and .json files with metadata tracking."""
+        
+        def __init__(self, file_path: Union[str, Path]):
+            self.file_path = Path(file_path)
+            if not self.file_path.exists():
+                raise FileNotFoundError(f"File not found: {self.file_path}")
+
+        def load(self) -> Dict[str, Any]:
+            ext = self.file_path.suffix.lower()
+            if ext == ".txt":
+                content = self._parse_txt()
+            elif ext == ".pdf":
+                content = self._parse_pdf()
+            elif ext == ".json":
+                content = self._parse_json()
+            else:
+                raise ValueError(f"Unsupported file format: {ext}")
+
+            return {
+                "content": content,
+                "metadata": {
+                    "source_path": str(self.file_path.resolve()),
+                    "file_type": ext.lstrip("."),
+                    "file_size_bytes": self.file_path.stat().st_size,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            }
+
+        def _parse_txt(self) -> str:
+            with open(self.file_path, "r", encoding="utf-8") as f:
+                return f.read()
+
+        def _parse_pdf(self) -> str:
+            text_content = []
+            reader = pypdf.PdfReader(self.file_path)
+            for page_num, page in enumerate(reader.pages):
+                page_text = page.extract_text()
+                if page_text:
+                    text_content.append(f"[Page {page_num + 1}]\n" + page_text)
+            return "\n\n".join(text_content)
+
+        def _parse_json(self) -> str:
+            with open(self.file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return "\n".join([f"{k}: {v}" for k, v in data.items()])
+            elif isinstance(data, list):
+                return "\n".join([str(item) for item in data])
+            return str(data)
