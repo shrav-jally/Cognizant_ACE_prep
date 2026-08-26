@@ -1,0 +1,27 @@
+kadane's algorithm
+
+class Solution:
+    def maxProfit(self, prices):
+        current = 0
+        max_profit = 0
+        for i in range(1, len(prices)):
+            current = max(0, current + prices[i] - prices[i - 1])
+            max_profit = max(max_profit, current)
+        return max_profit
+
+
+
+
+
+class Solution:
+    def maxProfit(self, prices):
+        max_profit = 0
+        i, j = 0, 1
+        while j < len(prices):      
+            if prices[j] > prices[i]:
+                profit = prices[j] - prices[i]
+                max_profit = max(max_profit, profit)
+            else:
+                i = j
+            j += 1
+        return max_profit
