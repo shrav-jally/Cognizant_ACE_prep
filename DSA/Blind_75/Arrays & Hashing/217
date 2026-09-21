@@ -1,0 +1,15 @@
+from collections import defaultdict
+class Solution:
+    def containsDuplicate(self, nums):
+        seen=defaultdict(int)
+
+        for i in nums:
+            seen[i]+=1
+            if seen[i]>1:
+                return True
+        return False
+
+
+class Solution:
+    def containsDuplicate(self, nums):
+        return len(nums)!=len(set(nums))
