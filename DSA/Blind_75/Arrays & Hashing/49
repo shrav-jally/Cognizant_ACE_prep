@@ -1,0 +1,6 @@
+class Solution:
+    def groupAnagrams(self, strs):
+        seen=defaultdict(list)
+        for i in strs:
+            seen[tuple(sorted(i))].append(i)
+        return list(seen.values())
