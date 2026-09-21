@@ -1,0 +1,15 @@
+class Solution:
+    def isAnagram(self, s: str, t: str) -> bool:
+        return sorted(s)==sorted(t)
+
+class Solution:
+    def isAnagram(self, s: str, t: str) -> bool:
+        sd=defaultdict(int)
+        for i in s:
+            sd[i]+=1
+        for i in t:
+            sd[i]-=1
+        for i in sd.values():
+            if i!=0:
+                return False
+        return True
