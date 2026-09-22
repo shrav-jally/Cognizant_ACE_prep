@@ -1,0 +1,29 @@
+class Solution:
+    def productExceptSelf(self, nums):
+        out=[]
+        for i in range(len(nums)):
+            l, r=1, 1
+            for j in range(i):
+                l*=nums[j]
+            for k in range(i+1, len(nums)):
+                r*=nums[k]
+            out.append(l*r)
+        return out
+
+
+class Solution:
+    def productExceptSelf(self, nums):
+        out=[1]*len(nums)
+        n=len(nums)
+        r, l=1, 1
+        
+        for i in range(n):
+            out[i]=l
+            l*=nums[i]
+        for i in range(n-1, -1, -1):
+            out[i]*=r
+            r*=nums[i]
+        return out 
+
+
+
