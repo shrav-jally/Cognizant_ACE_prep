@@ -1,0 +1,35 @@
+class Solution:
+    def longestConsecutive(self, nums):
+        nums = sorted(nums)
+        if not nums:
+            return 0
+
+        ml = 1
+        temp = 1
+        i = 0
+
+        while i < len(nums) - 1:
+            if nums[i] == nums[i + 1]:
+                pass
+            elif nums[i] + 1 == nums[i + 1]:
+                temp += 1
+                ml = max(ml, temp)
+            else:
+                temp = 1
+            i += 1
+        return ml
+
+
+
+class Solution:
+    def longestConsecutive(self, nums):
+        nums=set(nums)
+        ml=0
+
+        for n in nums:
+            if n-1 not in nums:
+                length=1
+                while n+length in nums:
+                    length+=1
+                ml=max(length, ml)
+        return ml
