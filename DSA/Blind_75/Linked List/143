@@ -12,7 +12,6 @@ class Solution:
             curr=curr.next
 
         l,r =0, len(arr)-1
-        curr=head
         while l<r:
             arr[l].next=arr[r]
             l+=1
@@ -21,3 +20,31 @@ class Solution:
             arr[r].next=arr[l]
             r-=1
         arr[l].next=None
+
+
+
+
+class Solution:
+    def reorderList(self, head: ListNode | None) -> None:
+        slow, fast =head, head
+        while fast and fast.next:
+            fast=fast.next.next
+            slow=slow.next
+
+        prev=None
+        curr=slow.next
+        slow.next=None
+        while curr:
+            nxt=curr.next
+            curr.next=prev
+            prev=curr
+            curr=nxt
+
+        curr=head
+        while prev:
+            onx=curr.next
+            fnx=prev.next
+            curr.next=prev
+            prev.next=onx
+            curr=onx
+            prev=fnx
