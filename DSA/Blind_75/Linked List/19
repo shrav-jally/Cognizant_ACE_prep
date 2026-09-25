@@ -1,0 +1,39 @@
+class Solution:
+    def removeNthFromEnd(self, head: ListNode | None, n: int) -> ListNode | None:
+        def Rev(head):
+            prev=None
+            curr=head
+            while curr:
+                nxt=curr.next
+                curr.next=prev
+                prev=curr
+                curr=nxt
+            return prev
+        head=Rev(head)
+        if n==1:
+            return Rev(head.next)
+        curr=head
+        for _ in range(n-2):
+            curr=curr.next
+        curr.next=curr.next.next
+        return Rev(head)
+
+
+
+
+class Solution:
+    def removeNthFromEnd(self, head: ListNode | None, n: int) -> ListNode | None:
+        dummy=ListNode(0, head)
+        slow, fast, temp=dummy, head, n
+        while temp>0:
+            fast=fast.next
+            temp-=1
+        
+        while fast:
+            slow=slow.next
+            fast=fast.next
+        
+        slow.next=slow.next.next
+        return dummy.next
+
+        
