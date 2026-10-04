@@ -1,14 +1,34 @@
+T: O(n) / S: O(n)
+
+class Solution:
+    def containsDuplicate(self, nums):
+        s=set()
+        for _ in range(len(nums)):
+            if nums[_] not in s:
+                s.add(nums[_])
+            else:
+                return True
+        return False
+
+
+
+
+T: O(n) / S: O(n)
+
 from collections import defaultdict
 class Solution:
     def containsDuplicate(self, nums):
         seen=defaultdict(int)
-
         for i in nums:
             seen[i]+=1
             if seen[i]>1:
                 return True
         return False
 
+
+
+
+T: O(n) / S: O(n)
 
 class Solution:
     def containsDuplicate(self, nums):
