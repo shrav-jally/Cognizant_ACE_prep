@@ -1,3 +1,5 @@
+T: O(n²) / S: O(1)
+
 class Solution:
     def twoSum(self, nums: List[int], target: int) -> List[int]:
         for i in range(len(nums)):
@@ -6,6 +8,10 @@ class Solution:
                     return [i, j]
 
 
+
+
+T: O(n) / S: O(n)
+
 class Solution:
     def twoSum(self, nums: List[int], target: int) -> List[int]:
         seen={}
@@ -13,3 +19,18 @@ class Solution:
             if target-nums[i] in seen:
                 return [i, seen.get(target-nums[i])]
             seen[nums[i]]=i
+
+
+
+
+T: O(n²) / S: O(n)
+
+class Solution:
+    def twoSum(self, nums: List[int], target: int) -> List[int]:
+        s=set()
+        for i in range(len(nums)):
+            if target-nums[i] in s:
+                return [i, nums.index(target-nums[i])]
+            else:
+                s.add(nums[i])
+
