@@ -1,7 +1,5 @@
 # AuditIQ — Architecture, Flows & Interview Q&A
 
-*(Based on verified DeepWiki documentation for Chandana909/AuditIQ-DeloitteHacksplosion)*
-
 ---
 
 ## 1. System Architecture
