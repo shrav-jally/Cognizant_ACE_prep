@@ -164,7 +164,7 @@ flowchart LR
 **Technical**
 
 8. **What's the tech stack?**
-   Flowise for agent orchestration, Neon PostgreSQL for data, LiteLLM as the model-routing layer, Upstash QStash for background alerts, Gmail for email, Appsmith for the dashboard.
+   Agentbuilder for agent orchestration, Neon PostgreSQL for data, LiteLLM as the model-routing layer, Upstash QStash for background alerts, Gmail for email, Appmaker for the dashboard.
 9. **Describe the main pipeline (`vibe_agent2`).**
    Init state → extraction → fetch active policy → three parallel phases (2A three-way match, 2B duplicates, 2C vendor intelligence) → challenger/verifier agent removes false positives → risk scoring → routing → LLM-written audit pack → saved to `audit_results`.
 10. **What is `risk_scoring_calculator`?**
