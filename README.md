@@ -1976,3 +1976,249 @@ The deterministic core means the actual math is transparent and reproducible, no
 - **Taxonomy model:** one page says a Groq LLM classifies taxonomy, another says the on-prem Qwen model handles LLM calls, confirm which model does taxonomy classification.
 - **Confidence-score factors:** the exact weighting/factor list inside `_calc_confidence_score` wasn't fully detailed in the documentation, check the function directly.
 - **Discovery sub-pipeline, ETL internals, and full API endpoint list:** not covered in depth here, worth a quick read of `extraction/discovery/`, `etl.py`, and the router files if asked for specifics.
+
+
+
+
+![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png)
+![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png)
+![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png)
+![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png)
+![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png)
+
+
+
+
+# 📈 Scaling These Projects — System Design, Rationale & Interview Q&A
+
+![Scale](https://img.shields.io/badge/Topic-System_Design_at_Scale-FF4500?style=for-the-badge)
+![Projects](https://img.shields.io/badge/Covers-AuditIQ_%7C_Avalokan_%7C_Touchless_Valuation-1E90FF?style=for-the-badge)
+
+> These are the "if you had to productionize and scale this 10x-100x" versions of the three projects, built as hypothetical extensions on top of the real, documented architectures (not what was actually shipped). Say that explicitly if asked, interviewers respect "here's what exists vs. here's how I'd evolve it" far more than conflating the two.
+
+---
+
+## 🟣 1. AuditIQ at Scale
+
+### Current bottlenecks (why scaling matters here)
+A single Flowise pipeline instance processing transactions one batch at a time hits three walls as volume grows: LLM API rate limits/cost, Postgres write contention from agents and the dashboard hitting the same tables, and the dashboard's SQL queries competing with the audit pipeline for the same database.
+
+```mermaid
+flowchart LR
+    SRC["Invoice / PO / GRN sources\nERP integrations, bulk upload"] --> GW["API Gateway\nauth, rate limiting"]
+    GW --> MQ["Message Queue\ne.g. Kafka / SQS\ntopic: new-transactions"]
+
+    MQ --> WORKERS["Autoscaled Agent Workers\nN x vibe_agent2 pipeline instances"]
+    WORKERS <-->|"cached, rate-limited calls"| LLMGW["LLM Gateway\ncaching, fallback models,\ncost/rate-limit control over LiteLLM"]
+
+    WORKERS -->|"reads"| CACHE[("Redis Cache\nvendor_master, policy_markdown")]
+    WORKERS -->|"writes"| PGW[(Postgres Primary\nwrite path)]
+    PGW -->|"replication"| PGR[(Postgres Read Replicas\nN replicas)]
+
+    WORKERS -->|"high-risk event"| ALERTQ["Alert Queue\nQStash / managed pub-sub"]
+    ALERTQ --> MAIL["Mail Workers"]
+    ALERTQ --> FORENSIC["Forensic Agent Workers\nautoscaled"]
+
+    PGR --> DASH["Dashboard / Appsmith\nbehind CDN + LB"]
+    PGR --> SQLCOPILOT["SQL Copilot Service\nread-only, rate-limited"]
+
+    DOCS["Raw document storage"] -.-> OBJ[("Object Storage\nS3-compatible, original PDFs/invoices")]
+    WORKERS -.-> OBJ
+
+    OBS["Observability stack\nmetrics, logs, traces, queue depth alarms"] -.-> WORKERS
+    OBS -.-> MQ
+    OBS -.-> PGW
+```
+
+### Design choices & reasoning
+
+| Choice | Why |
+|---|---|
+| **Ingestion queue (Kafka/SQS)** | Decouples bursty invoice intake from processing speed; absorbs spikes (month-end closing) without dropping transactions, and lets workers scale independently of ingestion rate. |
+| **Autoscaled agent workers** | The pipeline is stateless per-transaction, so horizontal scaling (add more worker pods based on queue depth) is the natural lever for throughput, rather than making one instance faster. |
+| **LLM Gateway on top of LiteLLM** | At scale, LLM calls become the dominant cost and latency driver; a gateway adds response caching (for repeated/similar prompts), rate limiting, and automatic fallback to a cheaper model under load. |
+| **Redis cache for vendor_master / policy** | These are read-heavy and change infrequently; caching avoids hammering Postgres with the same lookups across thousands of concurrent transaction checks. |
+| **Read replicas for dashboard + SQL copilot** | Separates analytical/read traffic from the transactional write path, so a heavy "show me all Q3 flagged vendors" query never competes with the pipeline writing new audit results. |
+| **Alert queue decoupled from the main pipeline** | Alerting (mail + forensic re-analysis) shouldn't block or slow down the core scoring decision; firing an event and letting separate workers handle it keeps the critical path fast. |
+| **Object storage for raw documents** | Keeps large binary files (PDFs, scanned invoices) out of Postgres, which should hold structured data, not blobs. |
+
+### Interview Q&A
+
+<details><summary><b>❓ What's the single biggest bottleneck as transaction volume grows, and why?</b></summary>
+LLM call volume, every transaction potentially needs verifier/report-writer LLM calls, and that's the most expensive, highest-latency, and rate-limited part of the pipeline, unlike the deterministic tools which are cheap and fast.
+</details>
+<details><summary><b>❓ Why a message queue instead of just calling the pipeline directly from the API?</b></summary>
+Direct calls couple ingestion speed to processing speed, a burst of invoices would either overwhelm workers or get rejected. A queue buffers the burst and lets workers drain it at a sustainable rate.
+</details>
+<details><summary><b>❓ How would you handle a worker crashing mid-transaction?</b></summary>
+The queue's message visibility/acknowledgment mechanism (not acking until processing completes) ensures an unprocessed message gets redelivered to another worker, so no transaction is silently lost.
+</details>
+<details><summary><b>❓ Why read replicas instead of just scaling up the primary database?</b></summary>
+Vertical scaling has a ceiling and doesn't help with the actual problem, write and read traffic contending for the same resource; replicas let analytical/dashboard reads run in parallel without blocking or slowing the pipeline's writes.
+</details>
+<details><summary><b>❓ How would you prevent the SQL copilot from being abused to run expensive queries at scale?</b></summary>
+Row caps (already in the current design), query timeouts, and routing it to a read replica so a runaway query can't degrade the primary write path, combined with per-user rate limiting at the gateway.
+</details>
+<details><summary><b>❓ What would you monitor to know when to scale workers up or down?</b></summary>
+Queue depth/age of oldest unprocessed message as the primary signal, plus worker CPU/memory and LLM gateway latency/error rate as secondary signals.
+</details>
+<details><summary><b>❓ How does this design keep the audit trail consistent if multiple workers process transactions concurrently?</b></summary>
+Each transaction is processed by exactly one worker end-to-end (the queue ensures single delivery per message), so there's no cross-worker race condition on a single transaction's audit trail, even though many transactions run in parallel.
+</details>
+<details><summary><b>❓ What's a trade-off you accepted in this design?</b></summary>
+Eventual consistency between the write path and the dashboard's read replicas, there's a small replication lag, meaning a just-processed transaction might not instantly appear on the dashboard, an acceptable trade-off for the read-scaling benefit.
+</details>
+
+---
+
+## 🔵 2. Avalokan at Scale
+
+### Current bottlenecks (why scaling matters here)
+Running BERT inference synchronously inside the comment-submission request means every citizen waits on a GPU-bound model call, and a surge of submissions (common right before a consultation deadline) would queue up requests and slow the whole API down.
+
+```mermaid
+flowchart LR
+    CIT["Citizens / NGOs\nmany concurrent submitters"] --> CDN["CDN\nstatic React build"]
+    CDN --> LB["Load Balancer"]
+    LB --> API1["Flask API instance 1"]
+    LB --> API2["Flask API instance N\nautoscaled"]
+
+    API1 -->|"save raw comment immediately"| DB[(MongoDB\nreplica set)]
+    API2 -->|"save raw comment immediately"| DB
+
+    API1 -->|"enqueue analysis job"| Q["Job Queue\ne.g. Celery/RabbitMQ or SQS"]
+    API2 -->|"enqueue analysis job"| Q
+
+    Q --> INF["Inference Service\nGPU-backed, autoscaled\nBERT + VADER + toxicity + summarizer"]
+    INF -->|"write results back"| DB
+
+    DB -->|"replica reads"| ADMIN_API["Admin Analytics API\nreads from replica, not primary"]
+    ADMIN_API --> CACHE[("Redis Cache\nprecomputed sentiment aggregates per draft")]
+    ADMIN["Govt. Official Dashboard"] --> ADMIN_API
+
+    ADMIN -->|"request report"| RPTQ["Report Job Queue"]
+    RPTQ --> RPTW["Report Workers"]
+    RPTW -->|"reads"| DB
+    RPTW -->|"writes file"| OBJ[("Object Storage\ngenerated PDF/Excel")]
+    OBJ --> ADMIN
+```
+
+### Design choices & reasoning
+
+| Choice | Why |
+|---|---|
+| **Async job queue between API and the AI engine** | This is the single most important change at scale, it decouples "citizen gets a fast confirmation" from "AI processing happens," so submission latency stays low even if the inference service is backed up. |
+| **Separate, independently-scaled GPU inference service** | BERT inference needs GPU resources with a very different cost/scaling profile than the lightweight Flask API; scaling them together wastes money (GPU instances sitting idle during low API traffic, or API under-provisioned to afford enough GPUs). |
+| **MongoDB replica set, analytics reads from replica** | Keeps heavy aggregate dashboard queries from contending with the write-heavy comment-submission path. |
+| **Redis cache for precomputed sentiment aggregates** | Dashboard "sentiment breakdown per draft" is recomputed constantly by officials refreshing the view; caching avoids re-running the same MongoDB aggregation pipeline on every page load. |
+| **CDN for the React frontend** | Static assets served from edge locations reduce load time for citizens regardless of their region, and completely removes static-file serving load from the backend. |
+| **Report generation as its own async job** | PDF/Excel generation is CPU-heavy and can take time for large drafts; doing it as a background job avoids blocking an admin's request and lets you retry/scale it independently. |
+
+### Interview Q&A
+
+<details><summary><b>❓ What's the single biggest architectural change you'd make to the documented version, and why?</b></summary>
+Making AI analysis asynchronous instead of synchronous, it's the one change that most directly protects the citizen-facing submission experience from backend load spikes.
+</details>
+<details><summary><b>❓ Why not just add more BERT model replicas directly inside each Flask instance?</b></summary>
+That couples GPU scaling to API scaling, you'd end up either over-provisioning GPUs to match API instance count, or under-provisioning API instances to afford enough GPUs. A separate service lets each scale to its own actual demand curve.
+</details>
+<details><summary><b>❓ How do you avoid showing stale sentiment numbers to an official after caching aggregates?</b></summary>
+Set a short cache TTL (e.g., a minute or two) or invalidate the cache for a draft whenever a new comment finishes analysis for it, trading a small staleness window for a large reduction in repeated computation.
+</details>
+<details><summary><b>❓ What happens if the inference service is completely down, does comment submission fail?</b></summary>
+No, the raw comment is already saved to MongoDB before the job is even enqueued; a dead inference service just means the job sits queued until it recovers, the citizen's submission itself never fails because of it.
+</details>
+<details><summary><b>❓ Why read analytics from a MongoDB replica instead of the primary?</b></summary>
+Comment submission is a constant write workload; running heavy aggregation queries against the same node would compete for the same I/O and could slow down submissions during high-traffic periods.
+</details>
+<details><summary><b>❓ How would you handle a sudden spike right before a consultation deadline?</b></summary>
+The API layer autoscales behind the load balancer to absorb the request spike, submissions stay fast because they only do a DB write and an enqueue, and the inference queue simply grows temporarily; workers catch up afterward rather than anything timing out.
+</details>
+<details><summary><b>❓ What's a trade-off you accepted in this design?</b></summary>
+A citizen no longer gets instant AI results (sentiment/summary) at the moment of submission, that part becomes "processing," visible to admins with a short delay, in exchange for a much more resilient, scalable submission path.
+</details>
+<details><summary><b>❓ How would you add multi-language support without redesigning this?</b></summary>
+Add a language-detection step as part of the inference job before the existing BERT/VADER call, routing non-English text to a multilingual or translated path, it slots into the existing job without touching the queue or storage layer.
+</details>
+
+---
+
+## 🟠 3. Touchless Valuation Engine at Scale
+
+### Current bottlenecks (why scaling matters here)
+SQLite doesn't handle concurrent writes well, and page-by-page VLM calls for PDF extraction are slow and GPU-bound, so many simultaneous valuation requests or document uploads would serialize behind each other.
+
+```mermaid
+flowchart LR
+    USERS["Analysts / MSME owners\nmany concurrent users"] --> CDN["CDN\nstatic SPA assets"]
+    CDN --> LB["Load Balancer"]
+    LB --> API1["FastAPI instance 1"]
+    LB --> API2["FastAPI instance N\nautoscaled"]
+
+    API1 -->|"peer + target queries"| PG[(Managed Postgres\nmigrated from SQLite\nprimary + read replicas)]
+    API2 --> PG
+
+    API1 -->|"cache hot lookups"| CACHE[("Redis Cache\nfrequent peer-group queries,\nindustry/sector lookups")]
+
+    API1 -->|"PDF upload"| OBJ[("Object Storage\nuploaded PDFs, generated Excel/HTML reports")]
+    API1 -->|"enqueue extraction job"| EQ["Extraction Job Queue"]
+    EQ --> EWORKERS["Extraction Workers\nautoscaled, CPU: ingestion/taxonomy\nGPU pool: VLM calls"]
+    EWORKERS -->|"page images"| VLMCLUSTER["VLM Inference Cluster\nautoscaled GPU pool\nQwen3-VL-8B replicas"]
+    EWORKERS -->|"structured financials"| PG
+    EWORKERS -->|"workbook"| OBJ
+
+    API1 -->|"valuation run"| CORE["Valuation Core Service\nstateless, horizontally scaled\nsame deterministic logic"]
+    CORE -->|"reads"| PG
+    CORE -->|"reads cache"| CACHE
+    CORE -->|"audit trail"| PG
+
+    ETLJOB["Scheduled ETL Job\nrefresh company data"] --> PG
+```
+
+### Design choices & reasoning
+
+| Choice | Why |
+|---|---|
+| **Migrate SQLite to managed Postgres with read replicas** | SQLite's single-writer limitation becomes a hard ceiling under concurrent valuation requests; Postgres supports real concurrent writes and read replicas separate peer-lookup read load from any write traffic (e.g., ETL refreshes). |
+| **Extraction as an async job queue, not inline in the request** | PDF extraction (especially VLM calls) can take significant time; making it async means the user gets an immediate "processing" response and can poll/be notified, instead of holding an HTTP connection open for a slow pipeline. |
+| **Separate GPU inference cluster for the VLM** | Same reasoning as Avalokan's inference service, GPU resources scale on a different curve than the lightweight API/valuation-core logic, and isolating them avoids wasting GPU spend on idle capacity. |
+| **Stateless valuation core as its own scaled service** | The core is already deterministic and side-effect-free by design (per the real architecture), which makes it trivially horizontally scalable, just run more instances behind the API. |
+| **Redis cache for frequent peer-group/sector lookups** | Peer discovery repeatedly queries similar industry/sector slices of the data; caching the hot paths avoids redundant computation across many concurrent valuation requests for similar companies. |
+| **Object storage for PDFs and generated reports** | Keeps large files out of the relational database and makes generated Excel/HTML reports durable and directly downloadable without re-generating them. |
+
+### Interview Q&A
+
+<details><summary><b>❓ Why is SQLite specifically a scaling problem here?</b></summary>
+SQLite allows only one writer at a time; as concurrent valuation requests and ETL refreshes grow, write contention becomes a hard bottleneck that a relational database with proper concurrency control (like Postgres) doesn't have.
+</details>
+<details><summary><b>❓ Why make PDF extraction async instead of keeping it as a synchronous API call?</b></summary>
+VLM-based extraction, especially one page per call, can take a meaningful amount of time for a long annual report; holding an HTTP request open for that is fragile (timeouts) and doesn't scale well with concurrent uploads. An async job with polling is more resilient.
+</details>
+<details><summary><b>❓ Why keep the valuation core logic unchanged while scaling everything around it?</b></summary>
+It's already deterministic and stateless by design, the real engineering problem at scale isn't the math, it's making sure enough instances of that same logic can run in parallel and that they have fast, non-contended access to peer data.
+</details>
+<details><summary><b>❓ How would you avoid redundant VLM calls if two users upload the same report?</b></summary>
+Hash the uploaded PDF and check object storage/a lookup table for a previous extraction result before enqueueing a new job, skipping extraction entirely on a cache hit.
+</details>
+<details><summary><b>❓ What would you cache, and what would you explicitly NOT cache?</b></summary>
+Cache frequent peer-group/sector lookups (read-heavy, relatively stable). Don't cache the final valuation result itself for long, since underlying company data or calibration anchors can be refreshed and a stale cached valuation could mislead a user.
+</details>
+<details><summary><b>❓ How does separating the GPU inference cluster help cost control?</b></summary>
+It can scale to zero (or near-zero) during idle periods and scale up only when extraction jobs are queued, rather than keeping GPU capacity provisioned at all times to match API instance count.
+</details>
+<details><summary><b>❓ What's a trade-off you accepted in this design?</b></summary>
+Users no longer get an instant extraction result, PDF processing becomes a "check back shortly" experience, in exchange for the system staying responsive under concurrent load instead of queuing requests behind each other.
+</details>
+<details><summary><b>❓ How would you handle a VLM API failure mid-extraction for a 40-page report?</b></summary>
+Since extraction is already per-page, a failed page can be retried individually (the documented pipeline already does retry + timeout detection per page) without having to redo the entire document from scratch.
+</details>
+
+---
+
+## 🧭 Cross-project scaling principles (good to say out loud in an interview)
+
+- **Decouple slow/expensive work (LLM calls, ML inference) from the user-facing request path** with a queue, this is the one pattern that shows up in all three redesigns.
+- **Separate read and write traffic** once analytics/dashboard queries start competing with core write operations, via replicas and/or caching.
+- **Scale GPU/LLM-bound components independently** from lightweight API/web components, they have very different cost and scaling profiles.
+- **Keep deterministic/stateless logic stateless**, it's the easiest thing to horizontally scale, so preserve that property rather than accidentally introducing shared state.
+- **Always be explicit that this is a hypothetical scaling exercise**, not what was actually built, interviewers specifically want to see you reason about trade-offs, not claim infrastructure you didn't build.
