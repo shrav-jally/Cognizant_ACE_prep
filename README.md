@@ -1133,7 +1133,7 @@ sequenceDiagram
 | **Not Currently Present**| **Missing Capabilities** | TypeScript, Docker configuration, Docker Compose, Automated CI/CD configuration, Backend test suite, Frontend test framework, Production WSGI server such as Gunicorn or Waitress, Explicit Python or Node version files |
 | **Summary** | **In short** | Avalokan is a React/Vite single-page application backed by a Flask REST API, MongoDB, Hugging Face/PyTorch NLP services, Google OAuth, and PDF/Excel reporting tools. |
 
----
+![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png)
 
 # 🛠️ My Contributions - Avalokan
 
@@ -1582,7 +1582,7 @@ Manual review only covers a fraction of submissions in the time available; Avalo
 Generic sentiment tools aren't tuned to legal/policy jargon and don't do clause-level summarization tied to a specific draft - Avalokan's fine-tuned model and hierarchical summary keep feedback traceable to the exact clause it's about.
 </details>
 
----
+![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png)
 
 # 🧮 Touchless Valuation Engine — Architecture, Flows & Interview Q&A
 
