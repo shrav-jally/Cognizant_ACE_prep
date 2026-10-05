@@ -1,6 +1,25 @@
+T: O(n × k log k) / S: O(n × k)
+
+from collections import defaultdict
 class Solution:
     def groupAnagrams(self, strs):
-        seen=defaultdict(list)
-        for i in strs:
-            seen[tuple(sorted(i))].append(i)
-        return list(seen.values())
+        d=defaultdict(list)
+        for _ in strs:
+            d[tuple(sorted(_))].append(_)
+        return list(d.values())
+
+
+
+
+T: O(n × k log k) / S: O(n × k)
+
+from collections import defaultdict
+class Solution:
+    def groupAnagrams(self, strs):
+        d=defaultdict(list)
+        for _ in strs:
+            count=[0]*26
+            for c in _:
+                count[ord(c)-ord('a')]+=1
+            d[tuple(count)].append(_)
+        return list(d.values())
