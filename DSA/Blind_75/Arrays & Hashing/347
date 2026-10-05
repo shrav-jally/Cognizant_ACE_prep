@@ -1,3 +1,22 @@
+T: O(n log n) / S: O(n)
+
+from collections import defaultdict
+class Solution:
+    def topKFrequent(self, nums: List[int], k: int) -> List[int]: 
+        out=[]
+        d=defaultdict(int)
+        for _ in nums:
+            d[_]+=1
+        d=sorted(d.items(), key=lambda x: x[1], reverse=True)
+        for _ in range(k):
+            out.append(d[_][0])
+        return out
+
+
+
+
+T: O(n log n) / S: O(n)
+
 from collections import Counter
 class Solution:
     def topKFrequent(self, nums, k):
@@ -10,6 +29,11 @@ class Solution:
             i += 1
         return final
 
+
+
+
+
+T: O(n) / S: O(n)
 
 from collections import Counter
 class Solution:
@@ -24,14 +48,14 @@ class Solution:
                 ans.append(num)
                 if len(ans) == k:
                     return ans
-        
 
+
+
+
+T: O(n log k) / S: O(n)
 
 from collections import Counter
 class Solution:
     def topKFrequent(self, nums: List[int], k: int) -> List[int]: 
-        if k == len(nums):
-            return nums
-
         count = Counter(nums)   
         return heapq.nlargest(k, count.keys(), key=count.get) 
