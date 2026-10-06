@@ -2221,7 +2221,126 @@ Since extraction is already per-page, a failed page can be retried individually 
 - **Keep deterministic/stateless logic stateless**, it's the easiest thing to horizontally scale, so preserve that property rather than accidentally introducing shared state.
 - **Always be explicit that this is a hypothetical scaling exercise**, not what was actually built, interviewers specifically want to see you reason about trade-offs, not claim infrastructure you didn't build.
 
+---
+---
+# 🌄 Terrain Segmentation — System Architecture & Scalability
 
+![Project](https://img.shields.io/badge/Project-Terrain_Segmentation-2E8B57?style=for-the-badge)
+
+## 1. System Architecture
+
+```mermaid
+flowchart LR
+    IMG["Robot View Image<br/>448x224, PIL format"] --> BB["DINOv2 Backbone (ViT-S/14)<br/>frozen, eval mode<br/>backbone.forward_features"]
+    BB -->|"patch tokens B,N,384"| HEAD["Segmentation Head<br/>SegmentationHeadExtreme (train) /<br/>SegmentationHeadConvNeXt (eval)"]
+    HEAD -->|"class logits B,10,H,W"| UP["Bilinear Upsample<br/>to original resolution"]
+    UP --> ARGMAX["torch.argmax over classes<br/>integer mask 0-9"]
+    ARGMAX --> COLOR["colorize_mask()<br/>index to RGB via PALETTE"]
+    ARGMAX --> PT["predict_terrain()<br/>rock_pct / log_pct from mask"]
+    PT --> NAV{"rock_pct > 5% OR<br/>log_pct > 5%?"}
+    NAV -->|"yes"| DANGER["DANGER: Obstacles!<br/>Rocks: X%, Logs: Y%"]
+    NAV -->|"no"| CLEAR["PATH CLEAR: Safe to proceed"]
+    COLOR --> UI["Gradio gr.Blocks UI<br/>input_box / output_mask / analysis_box"]
+    DANGER --> UI
+    CLEAR --> UI
+```
+
+**Overview:** A "Robot View" image is fed through a frozen DINOv2 ViT-S/14 backbone to produce patch tokens, which a trainable segmentation head decodes into per-pixel class logits, upsampled back to full resolution and reduced to an integer mask via argmax. That same mask feeds two parallel consumers: a colorizer for human-readable visualization, and `predict_terrain()` which computes obstacle density and triggers the binary navigation decision. Everything renders in a Gradio interface.
+
+---
+
+
+## 10. 📈 Scaling This System
+
+> Hypothetical "how I'd scale it" extension on top of the real, documented architecture — not what was actually built. Say that explicitly if asked.
+
+### Current bottlenecks (why scaling matters here)
+The current pipeline is a single Gradio demo on one Kaggle GPU, with `max_threads=1` deliberately serializing every request. That's fine for a hackathon judge clicking through one image at a time, but it breaks down the moment you need: multiple vehicles running inference simultaneously, continuous video (not single frames) at a sustained FPS, or fleet-wide model updates without re-deploying to every vehicle by hand. Unlike a typical web app, the hard constraint here is also physical: inference has to be fast enough and reliable enough to drive a real-time safety decision, so the scaling story has to deal with on-device latency as much as backend throughput.
+
+```mermaid
+flowchart LR
+    subgraph VEHICLE["Each vehicle - onboard, edge compute"]
+        CAM["Camera feed<br/>continuous frames"] --> PRE["Frame sampler<br/>throttles to inference rate"]
+        PRE --> EDGEMODEL["Quantized model on-device<br/>TensorRT / ONNX Runtime<br/>backbone + head fused and optimized"]
+        EDGEMODEL --> LOCALDECISION["predict_terrain logic<br/>runs locally, no network round-trip"]
+        LOCALDECISION --> CONTROL["Vehicle control system"]
+        LOCALDECISION -->|"buffer: frame + mask + decision"| LOGBUF["Local telemetry buffer"]
+    end
+
+    LOGBUF -->|"batched upload, when connected"| INGEST["Telemetry Ingestion API"]
+    INGEST --> OBJ[("Object Storage<br/>raw frames, masks, decisions, per vehicle")]
+    INGEST --> STREAM["Event stream<br/>Kafka / Kinesis"]
+
+    STREAM --> DRIFT["Drift / anomaly monitor<br/>flags unusual class distributions,<br/>repeated DANGER false-positive patterns"]
+    STREAM --> DASH["Fleet Ops Dashboard<br/>per-vehicle health, obstacle-rate trends"]
+
+    OBJ -->|"sampled, labeled batches"| RETRAIN["Retraining Pipeline<br/>GPU cluster, autoscaled<br/>same focal loss + class weights"]
+    RETRAIN --> REGISTRY["Model Registry<br/>versioned, quantized exports"]
+    REGISTRY -->|"OTA push, staged rollout"| VEHICLE
+
+    DRIFT -.->|"triggers"| RETRAIN
+```
+
+### Design choices & reasoning
+
+| Choice | Why |
+|---|---|
+| **Inference stays on-device (edge), not cloud round-trip** | A cloud round-trip per frame adds network latency that's unacceptable for a real-time safety decision; the vehicle must be able to decide DANGER/PATH CLEAR even with no connectivity. |
+| **Quantized export (TensorRT/ONNX) instead of the raw PyTorch model** | The training-time model isn't optimized for embedded inference; quantization and graph fusion cut latency and memory footprint on the vehicle's onboard GPU, directly improving the FPS budget `predict_terrain()` needs to stay real-time. |
+| **Local telemetry buffer, batched upload when connected** | Vehicles can't assume constant connectivity in off-road terrain; buffering locally and uploading opportunistically avoids losing data without blocking the vehicle on a network dependency. |
+| **Event stream + drift monitor, separate from the safety-critical path** | Watching for unusual class distributions or repeated false DANGER triggers across the fleet is valuable for catching systemic issues, but it must never sit in the latency-critical loop the vehicle depends on to drive. |
+| **Centralized retraining pipeline + model registry with staged OTA rollout** | New terrain types or lighting conditions discovered in the field should improve the model fleet-wide, but a bad model update pushed to every vehicle at once is dangerous; staged rollout (a few vehicles first) limits blast radius. |
+| **Autoscaled GPU cluster for retraining, not inference** | Inference load scales with vehicle count and is latency-bound (handled on-device); retraining load is periodic and batch-oriented, a fundamentally different scaling shape, so it gets its own autoscaled resource rather than sharing the inference path. |
+
+### Interview Q&A
+
+<details>
+<summary><b>❓ Why not just run inference in the cloud and stream the result back to the vehicle?</b></summary>
+
+Network latency and connectivity gaps make that unacceptable for a safety-critical, real-time decision — a dropped connection mid-frame would mean the vehicle has no obstacle assessment at all. Inference has to run on-device so the vehicle can always make a decision locally.
+</details>
+
+<details>
+<summary><b>❓ What's the single biggest change needed to go from the current demo to a real fleet deployment?</b></summary>
+
+Replacing the single-threaded Gradio/Kaggle setup with a quantized, on-device inference path per vehicle — the current demo architecture was built for one judge clicking through single images, not continuous real-time video on embedded hardware.
+</details>
+
+<details>
+<summary><b>❓ How would you keep the model updated across many vehicles without risking a bad rollout?</b></summary>
+
+A versioned model registry with staged rollout — push a new quantized model to a small subset of vehicles first, monitor their DANGER/PATH CLEAR decision rates and any anomaly signals via the drift monitor, then expand the rollout once it's confirmed stable.
+</details>
+
+<details>
+<summary><b>❓ How would you detect that the model is degrading in the field, without ground-truth labels?</b></summary>
+
+Watch for proxy signals in the telemetry stream: a sudden shift in the distribution of predicted classes per vehicle, an unusual spike in DANGER triggers, or repeated near-identical obstacle percentages that suggest the model is stuck rather than actually perceiving — all flagged by the drift monitor for human review rather than trusted blindly.
+</details>
+
+<details>
+<summary><b>❓ Why batch telemetry uploads instead of streaming every frame live?</b></summary>
+
+Off-road vehicles can't assume constant connectivity, and streaming every raw frame would be bandwidth-prohibitive at fleet scale; buffering locally and uploading in batches when connected is both more robust to connectivity gaps and cheaper on bandwidth.
+</details>
+
+<details>
+<summary><b>❓ How does retraining actually improve the deployed model without manual relabeling of everything?</b></summary>
+
+Flagged or sampled frames from the drift monitor and fleet telemetry become the retraining pool, focused specifically on cases the model struggled with in the field, rather than retraining from scratch on the full history — the same focal loss and class-weighting approach is reused so the retrained model keeps the hazard-prioritization behavior.
+</details>
+
+<details>
+<summary><b>❓ What's a trade-off you accepted in this design?</b></summary>
+
+Vehicles only get model improvements after a staged rollout cycle rather than instantly — a deliberate trade-off of update latency for fleet-wide safety, since pushing an unverified model to every vehicle simultaneously is a much bigger risk than a short delay.
+</details>
+
+<details>
+<summary><b>❓ How would you handle a vehicle whose onboard hardware can't keep up with the quantized model's FPS requirement?</b></summary>
+
+Fall back to a smaller/more aggressively quantized model variant on lower-spec hardware, or reduce the frame sampling rate feeding the model — both trade some accuracy or responsiveness for guaranteeing the pipeline never falls behind real-time on that vehicle's compute budget.
+</details>
 
 
 ![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png)
