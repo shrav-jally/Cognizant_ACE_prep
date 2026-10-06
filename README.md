@@ -2220,3 +2220,425 @@ Since extraction is already per-page, a failed page can be retried individually 
 - **Scale GPU/LLM-bound components independently** from lightweight API/web components, they have very different cost and scaling profiles.
 - **Keep deterministic/stateless logic stateless**, it's the easiest thing to horizontally scale, so preserve that property rather than accidentally introducing shared state.
 - **Always be explicit that this is a hypothetical scaling exercise**, not what was actually built, interviewers specifically want to see you reason about trade-offs, not claim infrastructure you didn't build.
+
+
+
+
+![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png)
+![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png)
+![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png)
+![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png)
+![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png)
+
+
+
+
+  # 🌄 Perception-Driven Terrain Segmentation — Architecture, Flows & Interview Q&A
+
+![Project](https://img.shields.io/badge/Project-Terrain_Segmentation-2E8B57?style=for-the-badge)
+![Status](https://img.shields.io/badge/Interview-Ready-brightgreen?style=for-the-badge)
+
+*Based on verified DeepWiki documentation for shrav-jally/Perception-Driven-Terrain-Segmentation-for-Autonomous-Offroad-Navigation (team Techtonic, Hackwithmumbai 2.0).*
+
+> **One-line pitch:** A frozen-DINOv2-backbone segmentation pipeline that classifies off-road terrain into 10 classes in real time, then turns that mask directly into a DANGER / PATH CLEAR navigation decision.
+
+---
+
+## 1. System Architecture
+
+```mermaid
+flowchart LR
+    IMG["Robot View Image<br/>448x224, PIL format"] --> BB["DINOv2 Backbone (ViT-S/14)<br/>frozen, eval mode<br/>backbone.forward_features"]
+    BB -->|"patch tokens B,N,384"| HEAD["Segmentation Head<br/>SegmentationHeadExtreme (train) /<br/>SegmentationHeadConvNeXt (eval)"]
+    HEAD -->|"class logits B,10,H,W"| UP["Bilinear Upsample<br/>to original resolution"]
+    UP --> ARGMAX["torch.argmax over classes<br/>integer mask 0-9"]
+    ARGMAX --> COLOR["colorize_mask()<br/>index to RGB via PALETTE"]
+    ARGMAX --> PT["predict_terrain()<br/>rock_pct / log_pct from mask"]
+    PT --> NAV{"rock_pct > 5% OR<br/>log_pct > 5%?"}
+    NAV -->|"yes"| DANGER["DANGER: Obstacles!<br/>Rocks: X%, Logs: Y%"]
+    NAV -->|"no"| CLEAR["PATH CLEAR: Safe to proceed"]
+    COLOR --> UI["Gradio gr.Blocks UI<br/>input_box / output_mask / analysis_box"]
+    DANGER --> UI
+    CLEAR --> UI
+```
+
+**Overview:** A "Robot View" image is fed through a frozen DINOv2 ViT-S/14 backbone to produce patch tokens, which a trainable segmentation head decodes into per-pixel class logits, upsampled back to full resolution and reduced to an integer mask via argmax. That same mask feeds two parallel consumers: a colorizer for human-readable visualization, and `predict_terrain()` which computes obstacle density and triggers the binary navigation decision. Everything renders in a Gradio interface.
+
+---
+
+## 2. Model Architecture — Tokens to Logits (Segmentation Head Internals)
+
+```mermaid
+flowchart TD
+    TOK["Patch tokens (B, N, 384)<br/>N = tokenH x tokenW"] --> RS["Reshape to (B, tokenH, tokenW, 384)"]
+    RS --> PERM["Permute to NCHW: (B, 384, tokenH, tokenW)<br/>required for Conv2d"]
+
+    PERM --> TRAIN_PATH["SegmentationHeadExtreme (training)"]
+    PERM --> EVAL_PATH["SegmentationHeadConvNeXt (evaluation)"]
+
+    subgraph TRAIN_PATH_DETAIL["Training head - stability-focused"]
+        T1["Conv2d 384 to 512, 3x3, pad 1"] --> T2["BatchNorm2d 512"] --> T3["GELU"]
+        T3 --> T4["Conv2d 512 to 256, 3x3, pad 1"] --> T5["BatchNorm2d 256"] --> T6["GELU"]
+        T6 --> T7["Conv2d 256 to 10 classes, 1x1<br/>final classifier"]
+    end
+
+    subgraph EVAL_PATH_DETAIL["Eval head - ConvNeXt-style, efficient"]
+        E1["Stem: Conv2d in to 256, 7x7, pad 3"] --> E2["GELU"]
+        E2 --> E3["Depthwise Conv2d 256, 7x7, pad 3, groups 256"]
+        E3 --> E4["Pointwise Conv2d 256 to 256, 1x1"] --> E5["GELU"]
+        E5 --> E6["Classifier: Conv2d 256 to 10 classes, 1x1"]
+    end
+
+    T7 --> OUT["Logits (B, 10, tokenH, tokenW)"]
+    E6 --> OUT
+    OUT --> UPSAMPLE["Bilinear upsample 14x<br/>back to pixel resolution"]
+```
+
+**Overview:** Both heads share the same reshape-permute entry (restoring the flattened token sequence into a spatial NCHW grid). The training head (`SegmentationHeadExtreme`) uses standard 3x3 convolutions with BatchNorm for gradient stability at high resolution; the evaluation head (`SegmentationHeadConvNeXt`) swaps in large-kernel depthwise-separable convolutions (ConvNeXt-style) with no BatchNorm, trading a little stability for efficiency at inference time. Since patches are 14x14 pixels, the output logits are 1/14 the input size and need bilinear upsampling back to full resolution.
+
+**Spatial math (good to have memorized):**
+- Training resolution 448x896 → tokenH=32, tokenW=64 → head input `(B, 2048, 384)`
+- Evaluation resolution 448x224 → tokenH=16, tokenW=32 → head input `(B, 512, 384)`
+
+---
+
+## 3. Training Flow — Loss & Optimization
+
+```mermaid
+flowchart TD
+    DATA["Training batch<br/>images + ground-truth masks"] --> FWD["Forward pass:<br/>frozen DINOv2 -> SegmentationHeadExtreme -> logits"]
+    FWD --> CE["F.cross_entropy(reduction='none')<br/>per-pixel CE loss, weighted by CLASS_WEIGHTS"]
+    CE --> PT_CALC["p_t = exp(-ce_loss)<br/>probability assigned to correct class"]
+    PT_CALC --> FOCAL["Focal weighting: (1 - p_t)^gamma, gamma=2.0<br/>down-weights easy/confident pixels"]
+    FOCAL --> LOSS["Final MultiClassFocalLoss"]
+    LOSS --> BACKWARD["loss.backward()"]
+    BACKWARD --> OPT["AdamW optimizer<br/>lr=3e-4, weight_decay=1e-2<br/>head params only - backbone stays in eval()"]
+    OPT --> SCHED["OneCycleLR scheduler<br/>max_lr=3e-4, 20 epochs<br/>warmup then cosine anneal"]
+    SCHED --> NEXT["Next batch / epoch"]
+```
+
+**Overview:** The frozen DINOv2 backbone only ever runs forward; gradients flow solely into the segmentation head. Standard cross-entropy is computed per pixel, converted into a confidence term `p_t`, and reweighted by `(1-p_t)^gamma` so the model stops "coasting" on easy, well-classified pixels (sky, ground) and keeps learning on hard ones. A separate `CLASS_WEIGHTS` tensor additionally upweights rare-but-dangerous classes inside the same cross-entropy call.
+
+**Class weights (a strong thing to know cold):**
+
+| Index | Class | Weight | Why |
+|---|---|---|---|
+| 6 | Logs | 7.5 | Highest priority — critical navigation hazard |
+| 7 | Rocks | 6.5 | High priority — potential vehicle damage |
+| 5 | Clutter | 3.5 | Moderate — unknown obstacles |
+| 4 | DryBush | 2.5 | Differentiated from lush vegetation |
+| 8 | Ground | 1.0 | Baseline — highly abundant |
+| 9 | Sky | 0.3 | Lowest — non-navigational |
+
+---
+
+## 4. Evaluation Flow — How the Model Is Actually Scored
+
+```mermaid
+flowchart TD
+    INIT["Init class_inter[10] = 0, class_union[10] = 0<br/>global accumulators, not per-image"] --> LOOP["For each validation batch"]
+    LOOP --> INF["Inference: DINOv2 x_norm_patchtokens -> head -> logits"]
+    INF --> BILIN["Bilinear upsample to 448x224"]
+    BILIN --> ARGMAX2["torch.argmax over class dim -> predicted mask"]
+    ARGMAX2 --> PERCLASS["For class in 0..9:<br/>intersection = (pred==cls) AND (gt==cls)<br/>union = (pred==cls) OR (gt==cls)"]
+    PERCLASS --> ACC["class_inter[cls] += intersection.sum()<br/>class_union[cls] += union.sum()"]
+    ACC --> MORE{"more batches?"}
+    MORE -->|"yes"| LOOP
+    MORE -->|"no"| IOU["Per-class IoU = class_inter / (class_union + 1e-6)"]
+    IOU --> MIOU["mIoU = mean of per-class IoU"]
+    MIOU --> REPORT["Performance summary printed:<br/>per-class IoU + overall mIoU"]
+```
+
+**Overview:** Instead of computing IoU per image and averaging (which lets a few easy/empty-class images inflate the score), intersection and union counts are accumulated as running totals across the *entire* validation set, then divided once at the end. This "global accumulation" strategy is specifically more robust to small objects and classes that are absent from individual frames — directly relevant if asked how you evaluated the system.
+
+---
+
+## 5. Theoretical & Conceptual Viva
+
+<details>
+<summary><b>❓ How did you evaluate this system? Walk me through your evaluation methodology end to end.</b></summary>
+
+Evaluation uses global IoU accumulation rather than per-image averaging: two arrays (`class_inter`, `class_union`) are initialized to zero for all 10 classes, and on every validation batch, the model's upsampled argmax prediction is compared pixel-by-pixel against ground truth per class, adding intersection and union counts into those same global arrays. Only after the entire validation set is processed is per-class IoU computed as `intersection / (union + 1e-6)`, and mIoU taken as the mean across all 10 classes. This global strategy avoids a failure mode of per-image averaging, where a frame with a tiny or absent object can produce a noisy, misleading IoU of 0 or 1 for that class in that frame; accumulating globally means the metric reflects performance across the full dataset's actual pixel distribution.
+</details>
+
+<details>
+<summary><b>❓ Why mIoU instead of pixel accuracy as the primary metric?</b></summary>
+
+Pixel accuracy is dominated by abundant classes (sky, ground) and can look high even if the model completely fails on rare, safety-critical classes like Logs or Rocks. mIoU averages per-class performance equally, so a model that's bad at detecting rocks gets penalized in the mIoU even if its overall pixel accuracy looks fine — which matters much more for a safety application than for a generic benchmark.
+</details>
+
+<details>
+<summary><b>❓ What problem does this project solve, in plain terms?</b></summary>
+
+An off-road vehicle's camera doesn't come with lane markings or road signs — the vehicle needs to visually understand what kind of terrain is in front of it (grass vs. rock vs. log) to decide whether it's safe to drive over. This project turns a camera frame into a per-pixel terrain map and then a simple go/no-go decision.
+</details>
+
+<details>
+<summary><b>❓ Why freeze the DINOv2 backbone instead of fine-tuning it?</b></summary>
+
+DINOv2 is pretrained via self-supervision on a huge, diverse image corpus and already produces strong general-purpose visual features. Freezing it means only the lightweight segmentation head needs training, which is far cheaper and much less prone to overfitting on a comparatively small hackathon-scale terrain dataset than fine-tuning tens of millions of backbone parameters.
+</details>
+
+<details>
+<summary><b>❓ Why two different segmentation heads (training vs. evaluation)?</b></summary>
+
+The training head (`SegmentationHeadExtreme`) uses BatchNorm and standard convolutions specifically for gradient stability at the higher training resolution (448x896). The evaluation head (`SegmentationHeadConvNeXt`) drops BatchNorm and uses large-kernel depthwise-separable convolutions for efficiency, since inference needs to be fast and doesn't need the same training-time stabilization.
+</details>
+
+<details>
+<summary><b>❓ What is focal loss and why use it here?</b></summary>
+
+Focal loss is cross-entropy reweighted by `(1 - p_t)^gamma`, where `p_t` is the model's predicted probability for the correct class. When the model is already confident and correct, that weighting factor shrinks toward zero, so the loss contribution from "easy" pixels (sky, ground) is suppressed; when the model is wrong or unsure, the factor stays close to one, keeping full gradient signal on "hard" pixels like small rocks and logs — directly counteracting the severe class imbalance in off-road scenes.
+</details>
+
+<details>
+<summary><b>❓ Why add CLASS_WEIGHTS on top of focal loss if focal loss already handles imbalance?</b></summary>
+
+Focal loss reweights based on prediction confidence (how hard a pixel is), while CLASS_WEIGHTS reweights based on class identity (how dangerous or rare a class is), independent of how confidently the model currently predicts it. They solve related but distinct problems: Logs get a 7.5x weight because missing them is dangerous, not just because they're statistically rare — the two mechanisms stack together in the same loss call.
+</details>
+
+<details>
+<summary><b>❓ Why OneCycleLR instead of a fixed learning rate?</b></summary>
+
+OneCycleLR ramps the learning rate up to a peak early in training and then anneals it down on a cosine curve, a pattern associated with "super-convergence" — faster training and a tendency to settle into flatter loss minima, which tends to generalize better to varied lighting and terrain textures than a constant learning rate would.
+</details>
+
+<details>
+<summary><b>❓ Why 448x224 for inference but 448x896 for training?</b></summary>
+
+Training at a different (wider) resolution than evaluation is a deliberate choice elsewhere in the pipeline documentation — it affects the token grid size and head input shape (2048 tokens at train vs. 512 tokens at eval), but the segmentation head's convolutional design works regardless of input grid size since it operates per-spatial-location rather than needing a fixed total token count.
+</details>
+
+<details>
+<summary><b>❓ Why choose a 5% pixel-density threshold for the DANGER decision?</b></summary>
+
+It's a heuristic trade-off: too low a threshold would trigger false "DANGER" alarms on a couple of stray misclassified pixels, while too high a threshold would ignore a real but small obstacle cluster. 5% of the frame was chosen as the cutoff for "this is a meaningful obstacle, not noise."
+</details>
+
+---
+
+## 6. Technical Deep-Dive Q&A
+
+<details>
+<summary><b>❓ Walk me through the full pipeline from camera frame to navigation command.</b></summary>
+
+A 448x224 "Robot View" image goes into the frozen DINOv2 ViT-S/14 backbone via `backbone.forward_features`, producing patch tokens of shape `(B, 512, 384)` at eval resolution. The ConvNeXt-style evaluation head reshapes and permutes those tokens into NCHW format, runs them through a stem + depthwise/pointwise ConvNeXt block + 1x1 classifier, producing `(B, 10, 16, 32)` logits. Bilinear upsampling restores full 448x224 resolution, `torch.argmax` collapses the class dimension into an integer mask, and that mask is handed to both `colorize_mask()` (for display) and `predict_terrain()` (for the navigation decision), all surfaced through the Gradio UI.
+</details>
+
+<details>
+<summary><b>❓ What are the exact dimensions flowing through the network at eval time?</b></summary>
+
+Input image 448(H)x224(W) → patch grid tokenH=16, tokenW=32 (since patch size is 14) → tokens `(B, 512, 384)` where 512 = 16x32 → head output `(B, 10, 16, 32)` logits → bilinear upsample → `(B, 10, 448, 224)` → argmax → `(B, 448, 224)` integer mask.
+</details>
+
+<details>
+<summary><b>❓ What exactly does `predict_terrain()` compute?</b></summary>
+
+It counts the number of pixels in the predicted mask belonging to the Rocks class (index 7) and the Logs class (index 6), divides each by total pixel count to get `rock_pct` and `log_pct`, and if either exceeds 5%, returns a DANGER status string with both percentages; otherwise it returns PATH CLEAR.
+</details>
+
+<details>
+<summary><b>❓ How does `colorize_mask()` work?</b></summary>
+
+It iterates over a predefined `PALETTE` (a list of RGB colors indexed 0-9) and maps every pixel's integer class index in the mask to its corresponding color, producing a human-readable RGB visualization from what is otherwise just small integers.
+</details>
+
+<details>
+<summary><b>❓ What are the 10 terrain classes and their raw dataset pixel values?</b></summary>
+
+0 Background (0, unclassified), 1 Trees (100, static obstacle), 2 Lush Bush (200, navigable/soft obstacle), 3 Dry Grass (300, navigable), 4 Dry Bush (500, navigable/soft obstacle), 5 Clutter (550, variable obstacle), 6 Logs (700, hard obstacle), 7 Rocks (800, hard obstacle), 8 Ground (7100, primary path), 9 Sky (10000, non-navigable). These raw dataset values are remapped to clean 0-9 indices via a `v_map` during data loading.
+</details>
+
+<details>
+<summary><b>❓ Why does the dataset use such non-sequential raw pixel values (0, 100, 200, ... 10000) instead of 0-9 directly?</b></summary>
+
+Those are the values as produced by whatever annotation/labeling tool generated the masks — the `v_map` lookup in the dataset loader is exactly the adapter layer that translates the raw label format into the dense 0-9 class indices the model and loss function actually need.
+</details>
+
+<details>
+<summary><b>❓ Why Kaggle with CUDA 11.8 specifically?</b></summary>
+
+It's the GPU-accelerated environment used to train and run the model for the hackathon — Kaggle provides free GPU compute, which matters for a time-boxed hackathon project without dedicated infrastructure.
+</details>
+
+<details>
+<summary><b>❓ Why `max_threads=1` on the Gradio launch, and why `gr.close_all()` at the start?</b></summary>
+
+`max_threads=1` serializes requests to avoid asyncio event-loop conflicts that are common when running Gradio inside a Kaggle notebook's execution environment, preventing kernel crashes. `gr.close_all()` ensures any previously running Gradio session is torn down first, freeing the local port before launching a fresh instance.
+</details>
+
+<details>
+<summary><b>❓ Why `share=True` on the Gradio launch?</b></summary>
+
+It generates a public URL so hackathon judges or external viewers can access the live demo without needing direct access to the Kaggle container itself.
+</details>
+
+---
+
+## 7. Metrics, Trade-offs & Deeper Rounds
+
+### 📏 Metrics & Evaluation
+
+<details>
+<summary><b>❓ The resume claims "improving mIoU by 342.86% over a U-Net baseline" and "91.2% accuracy" — how would you defend these numbers if asked for methodology?</b></summary>
+
+Be ready to state the actual baseline mIoU value the U-Net scored (since a huge relative percentage usually means the baseline itself was quite low), the exact validation set/split both models were evaluated on, and whether 91.2% refers to overall pixel accuracy (as described in the IoU methodology above) rather than mIoU, since they are different metrics and shouldn't be conflated in the answer.
+</details>
+
+<details>
+<summary><b>❓ Is mIoU computed per-image and averaged, or globally accumulated — and why does that distinction matter for your reported number?</b></summary>
+
+Globally accumulated, not per-image averaged — this matters because global accumulation tends to produce a more stable, less noisy mIoU than per-image averaging, so if comparing against another paper's or baseline's mIoU, the methodology needs to match or the comparison isn't apples-to-apples.
+</details>
+
+### ⚠️ Failure Modes & Edge Cases
+
+<details>
+<summary><b>❓ What happens when the model misclassifies a hazard as safe terrain?</b></summary>
+
+If Rocks or Logs get misclassified as Ground or DryBush, `predict_terrain()`'s pixel-density count for those hazard classes would undercount, potentially keeping `rock_pct`/`log_pct` under the 5% threshold and returning a false PATH CLEAR — the single most safety-critical failure mode of this system.
+</details>
+
+<details>
+<summary><b>❓ What kind of input would break this pipeline?</b></summary>
+
+Lighting or terrain conditions far outside the training distribution (heavy fog, snow, extreme glare, terrain types never seen in training) would degrade segmentation quality, since the frozen backbone's features are general-purpose but the trained head has only seen the specific terrain dataset used here.
+</details>
+
+<details>
+<summary><b>❓ Worst case if this went into a real vehicle tomorrow?</b></summary>
+
+A false PATH CLEAR on a genuine rock or log cluster leading to vehicle damage — this is exactly why the 5% threshold, class weighting, and focal loss all specifically bias the system toward catching Rocks/Logs rather than optimizing overall accuracy uniformly.
+</details>
+
+### 🐛 Debugging Story
+
+<details>
+<summary><b>❓ Hardest bug you personally hit?</b></summary>
+
+*(Fill with your real one — e.g., a shape mismatch between the reshaped token grid and the expected NCHW convolution input when switching between training and evaluation resolutions, traced by printing tensor shapes at each stage of the token-to-logits pipeline.)*
+</details>
+
+### ⚖️ Design Trade-offs
+
+<details>
+<summary><b>❓ Frozen backbone vs. fine-tuning DINOv2 — trade-off?</b></summary>
+
+Frozen: much cheaper to train, lower overfitting risk on a small dataset, but caps how specialized the features can become for off-road terrain specifically. Fine-tuning: potentially higher accuracy ceiling, at the cost of needing far more data/compute and real overfitting risk on a hackathon-scale dataset.
+</details>
+
+<details>
+<summary><b>❓ Why two separate head architectures instead of using the training head for inference too?</b></summary>
+
+The ConvNeXt eval head is specifically lighter and faster at inference, which matters for the stated real-time goal; the training head's BatchNorm layers are there purely to stabilize gradients during learning and aren't needed once weights are fixed, so swapping heads trades a small amount of potential accuracy consistency for real inference speed.
+</details>
+
+<details>
+<summary><b>❓ Focal loss + class weights vs. simple oversampling of rare classes?</b></summary>
+
+Focal loss and class weights operate at the loss level without needing to physically duplicate or resample training images, which is simpler to implement and doesn't risk overfitting to a small number of duplicated rare-class examples the way naive oversampling can.
+</details>
+
+### ✅ Testing & Validation
+
+<details>
+<summary><b>❓ How did you know the navigation decision logic was actually correct, not just "the model ran"?</b></summary>
+
+By checking the colorized mask output and the DANGER/PATH CLEAR text against the actual image content on held-out test frames — visually confirming that Rocks/Logs pixel regions correctly triggered the obstacle percentage calculation, not just trusting the printed mIoU number in isolation.
+</details>
+
+### 🚀 Deployment Reality
+
+<details>
+<summary><b>❓ Is this production-ready for a real autonomous vehicle, or a hackathon prototype?</b></summary>
+
+Hackathon prototype — it runs in a Kaggle notebook via Gradio with a shareable public link for demo purposes, not integrated with real vehicle control systems, sensor fusion, or safety certification processes a production autonomous system would need.
+</details>
+
+<details>
+<summary><b>❓ Resource footprint?</b></summary>
+
+GPU-dependent (CUDA 11.8 on Kaggle) for both training and real-time-ready inference; the frozen backbone means no GPU is needed for backbone training, only for the lightweight head, which keeps the resource footprint relatively low for a ViT-based pipeline.
+</details>
+
+### 🧩 Extensibility
+
+<details>
+<summary><b>❓ How would you add a new terrain class, e.g., "Mud"?</b></summary>
+
+Add its raw pixel value to the `v_map`, extend `CLASS_WEIGHTS` and the `PALETTE` with an entry for the new index, change the final classifier layer's output channels from 10 to 11, and retrain the head — the frozen backbone and overall architecture need no changes.
+</details>
+
+<details>
+<summary><b>❓ How would you extend this from single-frame to video/temporal input?</b></summary>
+
+Add temporal smoothing across consecutive frames' predicted masks (e.g., majority voting or an exponential moving average on obstacle percentages) before triggering the DANGER/PATH CLEAR decision, reducing flicker from single-frame misclassifications.
+</details>
+
+### 🔤 Buzzword Check
+
+<details>
+<summary><b>❓ Explain "Vision Transformer" like I'm five.</b></summary>
+
+Instead of sliding small filters over an image like a normal CNN, a Vision Transformer chops the image into small patches, treats each patch like a "word," and lets them all look at each other to understand the whole picture together.
+</details>
+
+<details>
+<summary><b>❓ Explain "frozen backbone" like I'm five.</b></summary>
+
+The part of the network that already knows how to "see" is locked in place and not changed during training — only a small add-on part at the end is allowed to learn.
+</details>
+
+### 🎯 Connecting to the Role
+
+<details>
+<summary><b>❓ Why does this project make you a good fit for the role?</b></summary>
+
+*(Bridge line — e.g., "It shows I can take a modern pretrained vision model and turn it into an actual real-time decision system, not just a benchmark score.")*
+</details>
+
+### 🏆 How It's Better Than Existing Approaches
+
+<details>
+<summary><b>❓ How is this better than a U-Net trained from scratch?</b></summary>
+
+A frozen pretrained DINOv2 backbone brings strong general visual features without needing a large labeled dataset to learn them from scratch, which is exactly why it substantially outperformed the U-Net baseline on mIoU in a resource- and data-constrained hackathon setting.
+</details>
+
+<details>
+<summary><b>❓ How is this better than a generic object detector for obstacle avoidance?</b></summary>
+
+Semantic segmentation classifies every pixel, not just bounding boxes, which matters for off-road terrain where "obstacle" isn't always a discrete object (loose rocks scattered across an area, for instance) — pixel-level density is a more natural signal for `predict_terrain()`'s threshold logic than box counts would be.
+</details>
+
+---
+
+## 8. My Contribution (fill in before the interview)
+
+> *(This section is a template — this repo belongs to team Techtonic, so state specifically what you personally built.)*
+
+<details>
+<summary><b>❓ What specifically did you build on this project?</b></summary>
+
+*(Fill in — e.g., "I implemented the segmentation head architectures and the focal loss / class-weighting strategy" or "I built the Gradio inference UI and the navigation decision logic," whichever is true.)*
+</details>
+
+<details>
+<summary><b>❓ Which part of the pipeline did you NOT build?</b></summary>
+
+*(Fill in your teammates' contributions — e.g., dataset collection/labeling, the DINOv2 integration, or the training loop, if those weren't yours.)*
+</details>
+
+<details>
+<summary><b>❓ What are you most proud of in this project?</b></summary>
+
+*(Fill in with your real answer, ideally tied to a specific design decision you personally made — e.g., choosing the focal loss gamma value, or tuning the 5% obstacle threshold.)*
+</details>
+
+---
+
+## 9. ⚠️ Items to verify before stating confidently
+
+- **Exact resume metrics** (342.86% mIoU improvement, 91.2% accuracy, 45.0 FPS, 10,000+ images): these are not directly confirmed in the DeepWiki documentation reviewed here — confirm the exact baseline numbers and evaluation set before an interview, per the Metrics section above.
+- **Dataset size and source**: the documentation references dataset loading and a `v_map` but doesn't state the exact training dataset size — check `3.1 Dataset and Data Loading` directly if asked for specifics.
+- **FPS benchmark**: not covered in the pages reviewed here — confirm what hardware/conditions the 45.0 FPS figure was measured under.
